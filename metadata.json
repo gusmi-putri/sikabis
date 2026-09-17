@@ -1,0 +1,8 @@
+{
+  "name": "Remix SI-KABIS - Command Center Bengpuskomlekad",
+  "description": "Command Center Keamanan Gudang Senjata Bengpuskomlekad dengan IoT \u0026 AI Face Recognition Access Control",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

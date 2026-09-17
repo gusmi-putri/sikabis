@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  .font-tactical {
+    font-family: 'Chakra Petch', sans-serif;
+  }
+
+  .font-mono-military {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+.military-grid {
+  background-image: radial-gradient(rgba(71, 85, 105, 0.2) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+html.light .military-grid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.3) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: rgba(34, 197, 94, 0.35);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  animation: scan 3.5s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes scan {
+  0% {
+    top: 0%;
+  }
+  100% {
+    top: 100%;
+  }
+}
+
+.alert-pulse {
+  animation: pulse-red 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    background-color: rgba(127, 29, 29, 0.8);
+    border-color: rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    background-color: rgba(127, 29, 29, 0.45);
+    border-color: rgba(239, 68, 68, 0.35);
+  }
+}
+
+@keyframes pulse-siren {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 35px rgba(239, 68, 68, 0.6);
+  }
+}
+
+.animate-siren {
+  animation: pulse-siren 1.5s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Tactical scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #020617;
+}
+html.light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

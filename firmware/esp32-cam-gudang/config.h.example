@@ -1,0 +1,23 @@
+/*
+ * config.h.example — Template kredensial device.
+ * Salin file ini jadi "config.h" di folder yang sama, lalu isi dengan
+ * nilai asli. "config.h" di-gitignore dan tidak pernah ter-commit.
+ */
+
+#pragma once
+
+const char* WIFI_SSID     = "ISI_NAMA_WIFI";
+const char* WIFI_PASSWORD = "ISI_PASSWORD_WIFI";
+
+// Dari @BotFather (token) dan @userinfobot (chat ID).
+const char* BOT_TOKEN_VAL = "ISI_TOKEN_BOT_TELEGRAM";
+const char* CHAT_ID_VAL   = "ISI_CHAT_ID_TELEGRAM";
+
+// IP LAN komputer server Laravel (BUKAN "localhost" -- ESP32 tidak bisa
+// mengaksesnya). Server harus dijalankan dengan
+// `php artisan serve --host=0.0.0.0` supaya bisa diakses dari luar.
+const char* API_BASE_URL_VAL = "http://192.168.1.XXX:8000/api";
+const char* DEVICE_ID_VAL    = "ESP32-GUDANG-01";
+
+// Disalin dari kolom `api_key` tabel device_statuses.
+const char* DEVICE_API_KEY_VAL = "ISI_API_KEY_DARI_DATABASE";
