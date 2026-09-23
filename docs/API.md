@@ -78,9 +78,9 @@ Status live perangkat (mengembalikan objek tunggal — device pertama di tabel).
 ```json
 {
   "data": {
-    "device_id": "ESP32-GUDANG-01",
+    "device_id": "GUDANG-01",
     "status": "online",
-    "pir_mode": "ARMED",
+    "pir_mode": "ON",
     "flash_on": false,
     "stream_url": "http://192.168.1.17/stream",
     "last_seen": "2026-09-17T15:02:03+00:00",
@@ -95,7 +95,7 @@ Status live perangkat (mengembalikan objek tunggal — device pertama di tabel).
 Nyalakan/matikan sensor PIR dari web. Mencatat entri baru ke `pir_mode_logs` (source: `web`) kalau nilainya benar-benar berubah.
 
 ```json
-{ "mode": "ARMED" }   // atau "ACTIVITY"
+{ "mode": "ON" }   // atau "OFF"
 ```
 
 ### `POST /device/flash` 🔐
@@ -111,8 +111,8 @@ Riwayat 100 perubahan status PIR terakhir, dari web maupun Telegram.
 ```json
 {
   "data": [
-    { "id": 2, "device_id": "ESP32-GUDANG-01", "pir_mode": "ARMED", "source": "telegram", "changed_by": null, "created_at": "..." },
-    { "id": 1, "device_id": "ESP32-GUDANG-01", "pir_mode": "ACTIVITY", "source": "web", "changed_by": "Letkol Admin PAM", "created_at": "..." }
+    { "id": 2, "device_id": "GUDANG-01", "pir_mode": "ON", "source": "telegram", "changed_by": null, "created_at": "..." },
+    { "id": 1, "device_id": "GUDANG-01", "pir_mode": "OFF", "source": "web", "changed_by": "Letkol Admin PAM", "created_at": "..." }
   ]
 }
 ```
@@ -172,20 +172,20 @@ Lapor status online + (opsional) perubahan yang device sendiri buat.
 
 ```json
 {
-  "device_id": "ESP32-GUDANG-01",
+  "device_id": "GUDANG-01",
   "stream_url": "http://192.168.1.17/stream",
-  "pir_mode": "ARMED",
+  "pir_mode": "ON",
   "flash_on": true
 }
 ```
 
 `stream_url` selalu disertakan. `pir_mode` dan `flash_on` **hanya** disertakan saat device sendiri baru mengubahnya (misal command Telegram) — lihat [ARSITEKTUR.md](ARSITEKTUR.md#model-sinkronisasi-perangkat-heartbeat--polling) untuk kenapa ini penting. Response `204`.
 
-### `GET /device/command?device_id=ESP32-GUDANG-01` 📡
+### `GET /device/command?device_id=GUDANG-01` 📡
 Dipoll device untuk mengambil perintah terbaru dari web.
 
 ```json
-{ "pir_mode": "ARMED", "flash_on": false }
+{ "pir_mode": "ON", "flash_on": false }
 ```
 
 ### `POST /device/motion-event` 📡

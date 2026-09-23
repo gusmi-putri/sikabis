@@ -41,6 +41,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Force logout jika token kadaluarsa
       localStorage.removeItem('sijaga_auth_token');
+      localStorage.removeItem('sijaga_auth_user');
       window.location.reload(); 
     }
     return Promise.reject(error);
@@ -64,6 +65,7 @@ export const APIService = {
   logout: async (): Promise<void> => {
     await api.post('/logout');
     localStorage.removeItem('sijaga_auth_token');
+    localStorage.removeItem('sijaga_auth_user');
   },
 
   // ── 2. LOGS & DATA FETCHING (DASHBOARD) ─────────────────────────
@@ -96,8 +98,8 @@ export const APIService = {
     return response.data.data || response.data;
   },
 
-  setPIRMode: async (mode: PIRMode): Promise<void> => {
-    await api.post('/device/pir-mode', { mode });
+  setPIRMode: async (mode: PIRMode, duration_minutes?: number): Promise<void> => {
+    await api.post('/device/pir-mode', { mode, duration_minutes });
   },
 
   /**

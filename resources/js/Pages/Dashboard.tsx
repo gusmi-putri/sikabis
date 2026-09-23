@@ -3,8 +3,8 @@
  * Root komponen untuk halaman Dashboard dengan Inertia.js
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { useCallback, useEffect, useState } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import { APIService } from '../services/api';
 
 // Layout
@@ -41,7 +41,7 @@ export type NavTab = 'dashboard' | 'access-log' | 'motion-log' | 'manajemen-akse
 const EMPTY_DEVICE_STATUS: DeviceStatus = {
   device_id: '—',
   status: 'offline',
-  pir_mode: 'ARMED',
+  pir_mode: 'ON',
   flash_on: false,
   stream_url: null,
   last_seen: new Date(0).toISOString(),
@@ -54,7 +54,11 @@ export default function Dashboard() {
   const { isDark } = useTheme();
 
   // ── Auth & Role ─────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const savedUser = localStorage.getItem('sijaga_auth_user');
+    const token = localStorage.getItem('sijaga_auth_token');
+    return savedUser && token ? JSON.parse(savedUser) : null;
+  });
 
   // ── Users Data (khusus Admin PAM) ───────────────────────────
   const [usersList, setUsersList] = useState<User[]>([]);
@@ -131,17 +135,22 @@ export default function Dashboard() {
   const latestMotion = motionEvents[0] ?? null;
   const hasActiveAlert =
     latestMotion !== null &&
-    latestMotion.pir_mode === 'ARMED' &&
+    latestMotion.pir_mode === 'ON' &&
     now - new Date(latestMotion.created_at).getTime() < 10 * 60 * 1000; // 10 menit terakhir
   const [alertDismissed, setAlertDismissed] = useState(false);
   const showAlert = hasActiveAlert && !alertDismissed;
 
   // ── Aksi: Ubah mode PIR ────────────────────────────────────
-  const handleSetPIRMode = async (mode: PIRMode) => {
+  const handleSetPIRMode = async (mode: PIRMode, durationMinutes?: number) => {
     const prevStatus = deviceStatus;
-    setDeviceStatus((prev) => ({ ...prev, pir_mode: mode }));
+    
+    const autoArmAt = mode === 'OFF' && durationMinutes 
+      ? new Date(Date.now() + durationMinutes * 60000).toISOString()
+      : null;
+
+    setDeviceStatus((prev) => ({ ...prev, pir_mode: mode, auto_arm_at: autoArmAt }));
     try {
-      await APIService.setPIRMode(mode);
+      await APIService.setPIRMode(mode, durationMinutes);
       APIService.getPirModeLogs().then(setPirModeLogs);
     } catch (err) {
       setDeviceStatus(prevStatus);
@@ -237,19 +246,38 @@ export default function Dashboard() {
 
   return (
     <div
-      className={`min-h-screen flex flex-row font-sans transition-colors duration-200 ${
-        isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'
+      className={`min-h-screen font-sans transition-colors duration-300 relative ${
+        isDark ? 'bg-[#020617] text-slate-100' : 'bg-slate-50 text-slate-900'
       }`}
     >
-      {/* Sidebar */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        userRole={currentUser.role} 
-      />
+      {/* Ambient Sci-Fi Glows */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {isDark ? (
+          <>
+            <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] bg-blue-600/20" />
+            <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] bg-cyan-500/15" />
+            <div className="absolute top-[40%] left-[20%] w-[30%] h-[30%] rounded-full blur-[100px] bg-indigo-500/10" />
+          </>
+        ) : (
+          <>
+            <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] bg-emerald-500/15" />
+            <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] bg-sky-500/15" />
+            <div className="absolute top-[40%] left-[20%] w-[30%] h-[30%] rounded-full blur-[100px] bg-indigo-500/10" />
+          </>
+        )}
+      </div>
 
-      {/* Main Column */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Kontainer Utama */}
+      <div className="relative z-10 flex flex-row w-full min-h-screen">
+        {/* Sidebar */}
+        <Sidebar 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          userRole={currentUser.role} 
+        />
+
+        {/* Main Column */}
+        <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
         <Topbar
           operatorName={currentUser.name}
@@ -315,7 +343,11 @@ export default function Dashboard() {
 
           {/* ── MOTION LOG ─────────────────────────────────── */}
           {activeTab === 'motion-log' && (
-            <MotionLogView events={motionEvents} />
+            <MotionLogView 
+              events={motionEvents} 
+              deviceStatus={deviceStatus}
+              onToggleFlash={handleToggleFlash}
+            />
           )}
 
           {/* ── MANAJEMEN AKSES (Khusus Admin) ─────────────── */}
@@ -333,6 +365,7 @@ export default function Dashboard() {
           {/* ── MANAJEMEN USER (Khusus Admin) ──────────────── */}
           {activeTab === 'manajemen-user' && currentUser.role === 'admin_pam' && (
             <UserManagementView
+              currentUser={currentUser}
               usersList={usersList}
               onAddPiket={handleAddPiketUser}
               onToggleActive={handleToggleUserActive}
@@ -341,6 +374,7 @@ export default function Dashboard() {
             />
           )}
         </main>
+      </div>
       </div>
     </div>
   );

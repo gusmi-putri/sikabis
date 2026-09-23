@@ -12,36 +12,49 @@ use Illuminate\Http\Request;
 
 class DeviceStatusController extends Controller
 {
-    /**
-     * Device dianggap offline kalau tidak ada heartbeat selama ini
-     * (3x interval heartbeat firmware, yang mengirim tiap 30 detik).
-     */
     private const OFFLINE_THRESHOLD_SECONDS = 90;
 
     public function show()
     {
-        $device = DeviceStatus::first();
+        $gudang = DeviceStatus::where('device_id', 'GUDANG-01')->first();
+        $keybox = DeviceStatus::where('device_id', 'ESP32-KEYBOX-01')->first();
 
-        if (
-            $device
-            && $device->status === 'online'
-            && (! $device->last_seen || $device->last_seen->lt(now()->subSeconds(self::OFFLINE_THRESHOLD_SECONDS)))
-        ) {
-            $device->update(['status' => 'offline']);
+        if ($gudang && $gudang->status === 'online' && (! $gudang->last_seen || $gudang->last_seen->lt(now()->subSeconds(self::OFFLINE_THRESHOLD_SECONDS)))) {
+            $gudang->update(['status' => 'offline']);
         }
 
-        return new DeviceStatusResource($device);
+        if ($keybox && $keybox->status === 'online' && (! $keybox->last_seen || $keybox->last_seen->lt(now()->subSeconds(self::OFFLINE_THRESHOLD_SECONDS)))) {
+            $keybox->update(['status' => 'offline']);
+        }
+
+        // Merge keybox pending state into gudang state so frontend only needs 1 object
+        if ($gudang && $keybox) {
+            $gudang->pending_command = $keybox->pending_command;
+            $gudang->pending_target = $keybox->pending_target;
+            $gudang->pending_since = $keybox->pending_since;
+        }
+
+        return new DeviceStatusResource($gudang ?: DeviceStatus::first());
     }
 
     public function setPirMode(Request $request)
     {
         $data = $request->validate([
-            'mode' => ['required', 'in:ARMED,ACTIVITY'],
+            'mode' => ['required', 'in:ON,OFF'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $device = DeviceStatus::first();
+        $device = DeviceStatus::where('device_id', 'GUDANG-01')->first();
         if ($device && $device->pir_mode !== $data['mode']) {
-            $device->update(['pir_mode' => $data['mode']]);
+            $autoArmAt = null;
+            if ($data['mode'] === 'OFF' && !empty($data['duration_minutes'])) {
+                $autoArmAt = now()->addMinutes($data['duration_minutes']);
+            }
+
+            $device->update([
+                'pir_mode' => $data['mode'],
+                'auto_arm_at' => $autoArmAt,
+            ]);
 
             PirModeLog::create([
                 'device_id' => $device->device_id,
@@ -54,26 +67,17 @@ class DeviceStatusController extends Controller
         return response()->json(null, 204);
     }
 
-    /**
-     * Nyalakan/matikan flash LED ESP32-CAM. Perubahan disimpan di
-     * database, lalu diambil firmware lewat polling /device/command
-     * (mekanisme sama seperti sinkronisasi pir_mode).
-     */
     public function setFlash(Request $request)
     {
         $data = $request->validate([
             'on' => ['required', 'boolean'],
         ]);
 
-        DeviceStatus::first()?->update(['flash_on' => $data['on']]);
+        DeviceStatus::where('device_id', 'GUDANG-01')->first()?->update(['flash_on' => $data['on']]);
 
         return response()->json(null, 204);
     }
 
-    /**
-     * Riwayat perubahan status nyala/mati sensor PIR, dari web maupun
-     * Telegram, supaya admin bisa memantau kapan & oleh siapa diubah.
-     */
     public function pirModeLogs()
     {
         return PirModeLogResource::collection(
@@ -81,16 +85,12 @@ class DeviceStatusController extends Controller
         );
     }
 
-    /**
-     * Batalkan command pending (ENROLL/DELETE) yang belum direspon key box.
-     * Personel pending_enroll dikembalikan ke 'failed', pending_revoke ke 'active'.
-     */
     public function cancelPending()
     {
         Personnel::where('status', 'pending_enroll')->update(['status' => 'failed']);
         Personnel::where('status', 'pending_revoke')->update(['status' => 'active']);
 
-        DeviceStatus::first()?->update([
+        DeviceStatus::where('device_id', 'ESP32-KEYBOX-01')->first()?->update([
             'pending_command' => 'NONE',
             'pending_target' => null,
             'pending_since' => null,

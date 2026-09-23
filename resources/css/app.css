@@ -14,6 +14,33 @@
   }
 }
 
+/* =========================================
+   LIGHT MODE OVERRIDES FOR HARDCODED CLASSES
+   ========================================= */
+html.light .bg-white\/5 { background-color: #ffffff !important; }
+html.light .border-white\/10 { border-color: #e2e8f0 !important; }
+html.light .bg-black\/20 { background-color: #f8fafc !important; }
+html.light .border-white\/5 { border-color: #f1f5f9 !important; }
+html.light .divide-white\/5 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #f1f5f9 !important;
+}
+
+/* Adjust text colors for readability in Light Mode */
+html.light h1.text-white, 
+html.light h2.text-white, 
+html.light h3.text-white, 
+html.light h4.text-white,
+html.light label {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-400 { color: #64748b !important; }
+html.light .text-slate-300 { color: #475569 !important; }
+html.light .text-slate-200 { color: #1e293b !important; }
+
+html.light th { color: #475569 !important; }
+html.light td .text-slate-200 { color: #0f172a !important; }
+
 .military-grid {
   background-image: radial-gradient(rgba(71, 85, 105, 0.2) 1px, transparent 1px);
   background-size: 20px 20px;

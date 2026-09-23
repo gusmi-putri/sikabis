@@ -44,8 +44,6 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
-        $this->ensurePiket($user);
-
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
@@ -74,12 +72,12 @@ class UserController extends Controller
 
     /**
      * Halaman ini hanya untuk mengelola akun piket -- admin tidak boleh
-     * mengedit/menghapus akun admin lain lewat endpoint ini.
+     * menghapus atau menonaktifkan akun admin lewat endpoint ini.
      */
     private function ensurePiket(User $user): void
     {
         if ($user->role !== 'piket') {
-            abort(403, 'Hanya akun piket yang bisa dikelola lewat halaman ini.');
+            abort(403, 'Hanya akun piket yang bisa dihapus atau dinonaktifkan.');
         }
     }
 }

@@ -167,31 +167,31 @@ export const INITIAL_MOTION_EVENTS: MotionEvent[] = [
   {
     id: 3,
     image_path: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400&auto=format&fit=crop&q=80',
-    pir_mode: 'ARMED',
-    device_id: 'ESP32-GUDANG-01',
+    pir_mode: 'ON',
+    device_id: 'GUDANG-01',
     created_at: ago(8),
   },
   {
     id: 2,
     image_path: 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=400&auto=format&fit=crop&q=80',
-    pir_mode: 'ACTIVITY',
-    device_id: 'ESP32-GUDANG-01',
+    pir_mode: 'OFF',
+    device_id: 'GUDANG-01',
     created_at: ago(55),
   },
   {
     id: 1,
     image_path: null, // tidak ada foto (kamera gagal capture)
-    pir_mode: 'ARMED',
-    device_id: 'ESP32-GUDANG-01',
+    pir_mode: 'ON',
+    device_id: 'GUDANG-01',
     created_at: ago(180),
   },
 ];
 
 // ---- Device Status ----
 export const INITIAL_DEVICE_STATUS: DeviceStatus = {
-  device_id: 'ESP32-GUDANG-01',
+  device_id: 'GUDANG-01',
   status: 'online',
-  pir_mode: 'ARMED',
+  pir_mode: 'ON',
   flash_on: false,
   stream_url: null,
   last_seen: ago(0.5),

@@ -7,7 +7,7 @@ SI-JAGA terdiri dari tiga komponen yang saling terhubung lewat REST API:
 ```
 ┌─────────────────────┐         ┌──────────────────────┐         ┌─────────────────────┐
 │   Browser (React)   │◄───────►│   Laravel Backend     │◄───────►│   ESP32-CAM (IoT)    │
-│  via Inertia.js     │  HTTP   │   + MySQL              │  HTTP   │   ARMED/ACTIVITY     │
+│  via Inertia.js     │  HTTP   │   + MySQL              │  HTTP   │   ON/OFF     │
 │  Dashboard SPA-like │ Sanctum │   routes/api.php        │ X-Device│   PIR + Kamera       │
 └─────────────────────┘         └──────────────────────┘  -Key    └─────────────────────┘
                                                                             │
@@ -79,7 +79,7 @@ Nilai `pir_mode` di database tetap `ARMED`/`ACTIVITY` (historis), tapi **secara 
 - `ARMED` = sensor nyala → gerakan memicu foto, upload ke dashboard, DAN notifikasi Telegram.
 - `ACTIVITY` = sensor mati → tidak ada reaksi sama sekali terhadap gerakan (baik ke Telegram maupun dashboard).
 
-UI web menampilkan ini sebagai "Nyalakan Sensor" / "Matikan Sensor", bukan istilah ARMED/ACTIVITY, untuk menghindari kebingungan operator.
+UI web menampilkan ini sebagai "Nyalakan Sensor" / "Matikan Sensor", bukan istilah ON/OFF, untuk menghindari kebingungan operator.
 
 ## Penyimpanan Foto
 

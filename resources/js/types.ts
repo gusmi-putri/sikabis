@@ -6,7 +6,7 @@
 
 export type AccessResult = 'success' | 'failed';
 
-export type PIRMode = 'ARMED' | 'ACTIVITY';
+export type PIRMode = 'ON' | 'OFF';
 
 export type PendingCommand = 'NONE' | 'ENROLL' | 'DELETE';
 
@@ -70,6 +70,7 @@ export interface DeviceStatus {
   pending_command: PendingCommand;  // Perintah pending ke device
   pending_target: number | null;    // fingerprint_id target (untuk DELETE)
   pending_since: string | null;     // ISO 8601 string, kapan command dikirim
+  auto_arm_at: string | null;
 }
 
 // ---- Model: personnel ----
@@ -90,7 +91,7 @@ export interface Personnel {
 export interface PirModeLog {
   id: number;
   device_id: string;
-  pir_mode: PIRMode;                // 'ARMED' (nyala) | 'ACTIVITY' (mati)
+  pir_mode: PIRMode;                // 'ON' (nyala) | 'OFF' (mati)
   source: 'web' | 'telegram';
   changed_by: string | null;        // nama user, null kalau dari Telegram
   created_at: string;               // ISO 8601 string

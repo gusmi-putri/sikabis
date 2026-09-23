@@ -18,16 +18,15 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials)) {
+        $user = User::where('username', $credentials['username'])->first();
+
+        if (! $user || ! \Illuminate\Support\Facades\Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
                 'username' => ['Username atau password salah.'],
             ]);
         }
 
-        $user = User::where('username', $credentials['username'])->firstOrFail();
-
         if (! $user->is_active) {
-            Auth::logout();
             throw ValidationException::withMessages([
                 'username' => ['Akun ini telah dinonaktifkan.'],
             ]);

@@ -9,7 +9,7 @@
  *   3. Backend Laravel SI-JAGA    -> dashboard web (motion log, status
  *                                    perangkat). Status aktif/mati sensor
  *                                    tersinkron dua arah dengan tombol
- *                                    "Set ARMED / Set ACTIVITY" di web.
+ *                                    "Set ON / Set OFF" di web.
  *
  * Perintah bot:
  *   /start   - daftar perintah
@@ -41,7 +41,7 @@
  *     motion_events tetap kosong/basi).
  *   - Status perangkat (online/offline, last_seen) di dashboard
  *     tidak pernah ter-update, jadi terlihat seolah mati selamanya.
- *   - Tombol "Set ARMED / Set ACTIVITY" di web (PIRControlPanel)
+ *   - Tombol "Set ON / Set OFF" di web (PIRControlPanel)
  *     tidak berefek apa pun ke perangkat fisik.
  * Versi ini menambahkan tiga panggilan HTTP ke Laravel API
  * (heartbeat, command polling, upload motion-event) supaya
@@ -102,8 +102,8 @@ bool flashMenyala = false;
 // ke dashboard; false = tidak terjadi apa-apa sama sekali (tidak ke
 // Telegram, tidak ke server) -- sensor dianggap nonaktif.
 //
-// Untuk dashboard web, status ini dikirim sebagai "ARMED" (aktif) atau
-// "ACTIVITY" (nonaktif) lewat modePirUntukServer() di bawah -- backend
+// Untuk dashboard web, status ini dikirim sebagai "ON" (aktif) atau
+// "OFF" (nonaktif) lewat modePirUntukServer() di bawah -- backend
 // & web tidak perlu tahu soal pirAktif, cukup dua status itu saja.
 // Disinkronkan DUA ARAH:
 //   - Diubah dari web dashboard (Admin PAM)  -> ke sini lewat /device/command
@@ -111,7 +111,7 @@ bool flashMenyala = false;
 bool pirAktif = true;
 
 String modePirUntukServer() {
-  return pirAktif ? "ARMED" : "ACTIVITY";
+  return pirAktif ? "ON" : "OFF";
 }
 
 volatile bool adaGerakan = false;   // diisi oleh interrupt, jangan diubah manual
@@ -660,7 +660,7 @@ void kirimHeartbeat(bool sertakanMode, bool sertakanFlash) {
 
 // ===================================================
 // POLL: ambil status PIR & flash terbaru dari dashboard (kalau Admin
-// mengubahnya lewat tombol Set ARMED/ACTIVITY atau tombol flash di web)
+// mengubahnya lewat tombol Set ON/OFF atau tombol flash di web)
 // Endpoint: GET {API_BASE_URL}/device/command?device_id=...
 // ARMED (web) -> pirAktif = true, ACTIVITY (web) -> pirAktif = false.
 // ===================================================
@@ -687,7 +687,7 @@ void sinkronPerintahDariServer() {
     if (!err) {
       const char* modeBaru = doc["pir_mode"];
       if (modeBaru) {
-        bool aktifBaru = (String(modeBaru) == "ARMED");
+        bool aktifBaru = (String(modeBaru) == "ON");
         if (aktifBaru != pirAktif) {
           pirAktif = aktifBaru;
           Serial.println(">> Status PIR disinkronkan dari dashboard: " + String(pirAktif ? "AKTIF" : "MATI"));

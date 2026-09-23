@@ -8,9 +8,10 @@
  */
 
 import React, { useState } from 'react';
-import { CheckCircle2, XCircle, KeyRound, ImageOff, X } from 'lucide-react';
+import { CheckCircle2, XCircle, KeyRound, ImageOff } from 'lucide-react';
 import { AccessLog, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { ImageZoomModal } from './ImageZoomModal';
 
 interface LiveAccessTableProps {
   logs: AccessLog[];
@@ -37,26 +38,24 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
   return (
     <div
       id="tabel-akses-keybox-terbaru"
-      className={`rounded-lg border shadow-sm overflow-hidden ${
-        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-      }`}
+      className={`rounded-2xl border shadow-lg overflow-hidden backdrop-blur-md ${isDark ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200'}`}
     >
       {/* Header */}
-      <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+      <div className={`flex items-center justify-between px-5 py-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg border ${isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+          <div className="p-2 rounded-lg border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">
             <KeyRound className="w-4 h-4" />
           </div>
           <div>
             <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
               Akses Key Box Terbaru
             </h3>
-            <p className={`text-[11px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <p className={`text-[11px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               5 scan fingerprint terakhir
             </p>
           </div>
         </div>
-        <span className={`text-[11px] font-mono px-2 py-1 rounded border ${isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+        <span className={`text-[11px] font-mono px-2 py-1 rounded border ${isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
           KEYBOX-01
         </span>
       </div>
@@ -65,17 +64,17 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
       <div className="overflow-x-auto">
         <table id="tabel-akses-keybox" className="w-full text-left border-collapse">
           <thead>
-            <tr className={`text-[11px] font-mono border-b ${isDark ? 'border-slate-800 text-slate-500 bg-slate-950/40' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
+            <tr className={`text-[11px] font-mono border-b ${isDark ? 'border-white/10 text-slate-300 bg-white/5' : 'border-slate-200 text-slate-600 bg-slate-50'}`}>
               <th className="py-2.5 px-4">Waktu</th>
               <th className="py-2.5 px-4">Foto</th>
               <th className="py-2.5 px-4">Personel</th>
               <th className="py-2.5 px-4 text-center">Status</th>
             </tr>
           </thead>
-          <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
+          <tbody className={`divide-y text-xs ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
             {logs.length === 0 ? (
               <tr>
-                <td colSpan={4} className={`py-8 text-center text-xs font-mono ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                <td colSpan={4} className="py-8 text-center text-xs font-mono text-slate-500">
                   Belum ada data akses
                 </td>
               </tr>
@@ -87,14 +86,14 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                   <tr
                     key={log.id}
                     id={`access-row-${log.id}`}
-                    className={`transition-colors ${isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}`}
+                    className={`transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-50'}`}
                   >
                     {/* Waktu */}
                     <td className={`py-3 px-4 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                       <div className="text-xs font-semibold">
                         {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </div>
-                      <div className={`text-[10px] ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         {timeAgo(log.created_at)}
                       </div>
                     </td>
@@ -104,9 +103,8 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       {log.image_path ? (
                         <button
                           onClick={() => setZoomPhoto(log)}
-                          className={`w-10 h-10 rounded border overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${
-                            isSuccess ? 'border-emerald-500/40' : 'border-red-500/40'
-                          }`}
+                          className={`w-10 h-10 rounded border overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${isSuccess ? 'border-emerald-500/40' : 'border-red-500/40'
+                            }`}
                           title="Klik untuk lihat penuh"
                         >
                           <img
@@ -116,7 +114,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                           />
                         </button>
                       ) : (
-                        <div className={`w-10 h-10 rounded border flex items-center justify-center ${isDark ? 'bg-slate-800 border-slate-700 text-slate-600' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
+                        <div className={`w-10 h-10 rounded border flex items-center justify-center ${isDark ? 'bg-white/5 border-white/10 text-slate-500' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
                           <ImageOff className="w-3.5 h-3.5" />
                         </div>
                       )}
@@ -127,7 +125,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       <div className={`text-xs font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                         {displayName}
                       </div>
-                      <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                      <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         ID finger: {log.fingerprint_id} · {log.device_id}
                       </div>
                     </td>
@@ -137,9 +135,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       {isSuccess ? (
                         <span
                           id={`badge-access-${log.id}`}
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border ${
-                            isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          }`}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border ${isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50' : 'bg-emerald-100 text-emerald-700 border-emerald-300'}`}
                         >
                           <CheckCircle2 className="w-3 h-3" />
                           Berhasil
@@ -147,9 +143,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       ) : (
                         <span
                           id={`badge-access-${log.id}`}
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border ${
-                            isDark ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-200'
-                          }`}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border ${isDark ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-red-100 text-red-700 border-red-300'}`}
                         >
                           <XCircle className="w-3 h-3" />
                           Gagal
@@ -165,33 +159,13 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
       </div>
 
       {/* Modal zoom foto */}
-      {zoomPhoto && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setZoomPhoto(null)}
-        >
-          <div
-            className={`rounded-xl border max-w-md w-full p-4 shadow-2xl ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className={`flex items-center justify-between mb-3 pb-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <div>
-                <div className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                  {resolveDisplayName(zoomPhoto, personnelList)}
-                </div>
-                <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-                  {new Date(zoomPhoto.created_at).toLocaleString('id-ID')} · ID finger: {zoomPhoto.fingerprint_id}
-                </div>
-              </div>
-              <button onClick={() => setZoomPhoto(null)} className={`p-1.5 rounded-lg cursor-pointer ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className={`rounded-lg overflow-hidden border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-              <img src={zoomPhoto.image_path!} alt="Foto scan" className="w-full object-cover" />
-            </div>
-          </div>
-        </div>
+      {zoomPhoto && zoomPhoto.image_path && (
+        <ImageZoomModal
+          imageUrl={zoomPhoto.image_path}
+          title={resolveDisplayName(zoomPhoto, personnelList)}
+          subtitle={`${new Date(zoomPhoto.created_at).toLocaleString('id-ID')} · ID finger: ${zoomPhoto.fingerprint_id}`}
+          onClose={() => setZoomPhoto(null)}
+        />
       )}
     </div>
   );

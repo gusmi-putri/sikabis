@@ -53,7 +53,7 @@ php artisan migrate --seed
 Seeder (`database/seeders/SiJagaSeeder.php`) akan membuat:
 - 3 akun user contoh (`admin`/`123` sebagai Admin PAM, `piket`/`123` dan `piket2`/`123` sebagai Piket Jaga — `piket2` sengaja nonaktif untuk demo).
 - Beberapa data personel, access log, dan motion event contoh.
-- Satu baris `device_statuses` untuk `ESP32-GUDANG-01`, lengkap dengan `api_key` yang di-generate acak.
+- Satu baris `device_statuses` untuk `GUDANG-01`, lengkap dengan `api_key` yang di-generate acak.
 
 **Simpan `api_key` yang tercetak** — dibutuhkan untuk konfigurasi firmware ESP32 (lihat langkah 6). Kalau lupa, ambil lagi dengan:
 

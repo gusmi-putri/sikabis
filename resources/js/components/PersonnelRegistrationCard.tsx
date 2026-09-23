@@ -52,21 +52,17 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
   };
 
   return (
-    <div className={`rounded-xl border shadow-sm overflow-hidden ${
-      isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-    }`}>
-      <div className={`p-5 border-b flex items-center justify-between ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+    <div className="rounded-2xl border shadow-lg overflow-hidden bg-white/5 backdrop-blur-md border-white/10">
+      <div className="p-5 border-b flex items-center justify-between border-white/10">
         <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-lg border ${
-            isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'
-          }`}>
+          <div className="p-2.5 rounded-lg border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">
             <UserPlus className="w-5 h-5" />
           </div>
           <div>
-            <h3 className={`text-base font-bold font-tactical ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <h3 className="text-base font-bold font-tactical text-white">
               Registrasi Personel
             </h3>
-            <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <p className="text-[11px] font-mono mt-0.5 text-slate-400">
               Daftarkan akses key box fisik
             </p>
           </div>
@@ -75,9 +71,7 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
 
       <div className="p-5">
         {hasPending && (
-          <div className={`mb-5 p-3 rounded-lg border flex gap-3 text-xs font-mono leading-relaxed ${
-            isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-800'
-          }`}>
+          <div className="mb-5 p-3 rounded-lg border flex gap-3 text-xs font-mono leading-relaxed bg-amber-500/20 border-amber-500/30 text-amber-200">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
             <div>
               <span className="font-bold">Aksi Diblokir:</span> Saat ini ada perintah <span className="font-bold text-amber-500">{deviceStatus.pending_command}</span> yang sedang menunggu respon dari key box. Registrasi baru ditangguhkan sampai perintah sebelumnya selesai.
@@ -87,7 +81,7 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <label className="block text-xs font-semibold mb-1.5 text-slate-400">
               Nama Lengkap <span className="text-red-500">*</span>
             </label>
             <input
@@ -97,14 +91,12 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               disabled={!isDeviceOnline || hasPending}
               placeholder="Contoh: Budi Santoso"
-              className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isDark ? 'bg-slate-950 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-900'
-              }`}
+              className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed bg-black/20 border-white/10 text-slate-200"
             />
           </div>
 
           <div>
-            <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <label className="block text-xs font-semibold mb-1.5 text-slate-400">
               Pangkat / NRP <span className="font-normal text-slate-500">(Opsional)</span>
             </label>
             <input
@@ -113,14 +105,12 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
               onChange={(e) => setFormData({ ...formData, rank_nrp: e.target.value })}
               disabled={!isDeviceOnline || hasPending}
               placeholder="Contoh: Praka Inf / 312..."
-              className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isDark ? 'bg-slate-950 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-900'
-              }`}
+              className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed bg-black/20 border-white/10 text-slate-200"
             />
           </div>
 
           <div>
-            <label className={`block text-xs font-semibold mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <label className="block text-xs font-semibold mb-1.5 text-slate-400">
               Catatan <span className="font-normal text-slate-500">(Opsional)</span>
             </label>
             <textarea
@@ -129,18 +119,14 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               disabled={!isDeviceOnline || hasPending}
               placeholder="Keterangan tambahan..."
-              className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isDark ? 'bg-slate-950 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-300 text-slate-900'
-              }`}
+              className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed bg-black/20 border-white/10 text-slate-200"
             />
           </div>
 
-          <div className={`mt-5 p-3 rounded-lg border flex gap-3 ${
-            isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
-          }`}>
-            <Fingerprint className={`w-5 h-5 shrink-0 ${isDark ? 'text-emerald-500' : 'text-emerald-600'}`} />
-            <div className={`text-[10px] font-mono leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Setelah menekan "Kirim Perintah Enroll", status personel akan menjadi <span className={isDark ? 'text-amber-400' : 'text-amber-600'}>pending_enroll</span>. Operator harus mengarahkan personel untuk menempelkan jari pada sensor fisik di key box.
+          <div className="mt-5 p-3 rounded-lg border flex gap-3 bg-white/5 border-white/10">
+            <Fingerprint className="w-5 h-5 shrink-0 text-emerald-500" />
+            <div className="text-[10px] font-mono leading-relaxed text-slate-400">
+              Setelah menekan "Kirim Perintah Enroll", status personel akan menjadi <span className="text-amber-400">pending_enroll</span>. Operator harus mengarahkan personel untuk menempelkan jari pada sensor fisik di key box.
             </div>
           </div>
 
@@ -149,9 +135,7 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
             disabled={!isDeviceOnline || hasPending || isSubmitting}
             className={`w-full py-2.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 ${
               !isDeviceOnline || hasPending || isSubmitting
-                ? isDark
-                  ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                  : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                ? 'bg-white/5 text-slate-500 border border-white/10 cursor-not-allowed'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-sm border border-emerald-500/60'
             }`}
           >

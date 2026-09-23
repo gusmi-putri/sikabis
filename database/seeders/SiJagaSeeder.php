@@ -90,16 +90,16 @@ class SiJagaSeeder extends Seeder
 
         // ---- Motion Events ----
         $motionEvents = [
-            ['image_path' => 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400&auto=format&fit=crop&q=80', 'pir_mode' => 'ARMED', 'minutes' => 8],
-            ['image_path' => 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=400&auto=format&fit=crop&q=80', 'pir_mode' => 'ACTIVITY', 'minutes' => 55],
-            ['image_path' => null, 'pir_mode' => 'ARMED', 'minutes' => 180],
+            ['image_path' => 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400&auto=format&fit=crop&q=80', 'pir_mode' => 'ON', 'minutes' => 8],
+            ['image_path' => 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=400&auto=format&fit=crop&q=80', 'pir_mode' => 'OFF', 'minutes' => 55],
+            ['image_path' => null, 'pir_mode' => 'ON', 'minutes' => 180],
         ];
 
         foreach ($motionEvents as $event) {
             MotionEvent::create([
                 'image_path' => $event['image_path'],
                 'pir_mode' => $event['pir_mode'],
-                'device_id' => 'ESP32-GUDANG-01',
+                'device_id' => 'GUDANG-01',
                 'created_at' => $ago($event['minutes']),
                 'updated_at' => $ago($event['minutes']),
             ]);
@@ -109,11 +109,22 @@ class SiJagaSeeder extends Seeder
         // api_key dipakai ESP32-CAM untuk autentikasi ke endpoint /api/device/*
         // (lihat EnsureValidDeviceKey). Cetak sekali di sini, salin ke firmware.
         DeviceStatus::create([
-            'device_id' => 'ESP32-GUDANG-01',
+            'device_id' => 'GUDANG-01',
             'api_key' => Str::random(40),
             'status' => 'online',
-            'pir_mode' => 'ARMED',
+            'pir_mode' => 'ON',
             'last_seen' => now()->subSeconds(30),
+            'pending_command' => 'NONE',
+            'pending_target' => null,
+            'pending_since' => null,
+        ]);
+
+        DeviceStatus::create([
+            'device_id' => 'ESP32-KEYBOX-01',
+            'api_key' => Str::random(40),
+            'status' => 'online',
+            'pir_mode' => 'OFF', // Keybox doesn't use PIR mode, default to ACTIVITY
+            'last_seen' => now()->subSeconds(10),
             'pending_command' => 'NONE',
             'pending_target' => null,
             'pending_since' => null,

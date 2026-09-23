@@ -43,7 +43,7 @@ const char* BOT_TOKEN_VAL = "token-dari-@BotFather";
 const char* CHAT_ID_VAL   = "chat-id-dari-@userinfobot";
 
 const char* API_BASE_URL_VAL   = "http://192.168.1.XXX:8000/api";  // IP LAN server Laravel
-const char* DEVICE_ID_VAL      = "ESP32-GUDANG-01";
+const char* DEVICE_ID_VAL      = "GUDANG-01";
 const char* DEVICE_API_KEY_VAL = "api-key-dari-tabel-device_statuses";
 ```
 

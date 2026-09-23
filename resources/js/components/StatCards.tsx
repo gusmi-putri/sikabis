@@ -35,16 +35,12 @@ export const StatCards: React.FC<StatCardsProps> = ({ stats }) => {
       icon: ShieldAlert,
       colorClass:
         stats.accessFailed24h > 0
-          ? isDark
-            ? 'text-red-400 bg-red-500/10 border-red-500/20'
-            : 'text-red-700 bg-red-50 border-red-200'
-          : isDark
-            ? 'text-slate-400 bg-slate-800 border-slate-700'
-            : 'text-slate-600 bg-slate-100 border-slate-200',
+          ? isDark ? 'text-red-400 bg-red-500/10 border-red-500/20' : 'text-red-700 bg-red-50 border-red-200'
+          : isDark ? 'text-slate-400 bg-white/5 border-white/10' : 'text-slate-500 bg-slate-100 border-slate-200',
       valueClass:
         stats.accessFailed24h > 0
-          ? isDark ? 'text-red-400' : 'text-red-600'
-          : isDark ? 'text-slate-300' : 'text-slate-700',
+          ? isDark ? 'text-red-400' : 'text-red-700'
+          : isDark ? 'text-slate-300' : 'text-slate-600',
     },
     {
       id: 'stat-motion-events',
@@ -65,14 +61,14 @@ export const StatCards: React.FC<StatCardsProps> = ({ stats }) => {
         <div
           key={id}
           id={id}
-          className={`rounded-lg p-5 border shadow-sm transition-all ${
-            isDark
-              ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
-              : 'bg-white border-slate-200 hover:border-slate-300'
+          className={`rounded-2xl p-5 border shadow-sm transition-all ${
+            isDark 
+              ? 'bg-white/5 backdrop-blur-md border-white/10 hover:border-white/20 hover:bg-white/10' 
+              : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            <span className={`text-xs font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
               {label}
             </span>
             <div className={`p-2 rounded-lg border ${colorClass}`}>
@@ -82,7 +78,7 @@ export const StatCards: React.FC<StatCardsProps> = ({ stats }) => {
           <div className={`text-3xl font-bold font-mono mt-3 ${valueClass}`}>
             {value}
           </div>
-          <div className={`text-[11px] font-mono mt-1 ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+          <div className={`text-[11px] font-mono mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
             {sublabel}
           </div>
         </div>

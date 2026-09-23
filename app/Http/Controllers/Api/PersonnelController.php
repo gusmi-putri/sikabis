@@ -28,7 +28,7 @@ class PersonnelController extends Controller
             'status' => 'pending_enroll',
         ]);
 
-        DeviceStatus::first()?->update([
+        DeviceStatus::where('device_id', 'ESP32-KEYBOX-01')->first()?->update([
             'pending_command' => 'ENROLL',
             'pending_target' => null,
             'pending_since' => now(),
@@ -59,7 +59,7 @@ class PersonnelController extends Controller
         $personnel = Personnel::where('fingerprint_id', $data['fingerprint_id'])->firstOrFail();
         $personnel->update(['status' => 'pending_revoke']);
 
-        DeviceStatus::first()?->update([
+        DeviceStatus::where('device_id', 'ESP32-KEYBOX-01')->first()?->update([
             'pending_command' => 'DELETE',
             'pending_target' => $data['fingerprint_id'],
             'pending_since' => now(),

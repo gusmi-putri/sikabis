@@ -39,6 +39,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
       if (token) {
         localStorage.setItem('sijaga_auth_token', token);
+        localStorage.setItem('sijaga_auth_user', JSON.stringify(user));
       }
 
       onLogin(user);
@@ -46,7 +47,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       const message: string =
         err?.response?.data?.errors?.username?.[0] ||
         err?.response?.data?.message ||
-        'Username atau password salah.';
+        (err?.message === 'Network Error' ? 'Koneksi ke server gagal (CORS/Network Error).' : 'Username atau password salah.');
       setError(message);
     } finally {
       setIsLoading(false);
@@ -55,15 +56,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
   return (
     <div
-      className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-200 ${
-        isDark ? 'bg-slate-950' : 'bg-slate-100'
-      }`}
+      className="min-h-screen flex items-center justify-center p-4 transition-colors duration-200 bg-gradient-to-b from-[#1a3644] to-[#0a192f]"
     >
       {/* Background subtle grid */}
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.03]"
+        className="absolute inset-0 pointer-events-none opacity-[0.05]"
         style={{
-          backgroundImage: `linear-gradient(${isDark ? '#10b981' : '#047857'} 1px, transparent 1px), linear-gradient(90deg, ${isDark ? '#10b981' : '#047857'} 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(#10b981 1px, transparent 1px), linear-gradient(90deg, #10b981 1px, transparent 1px)`,
           backgroundSize: '48px 48px',
         }}
       />
@@ -74,25 +73,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 shadow-lg shadow-emerald-900/40 mb-4">
             <Shield className="w-8 h-8 text-white" />
           </div>
-          <h1 className={`text-2xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
             SI-JAGA
           </h1>
-          <p className={`text-xs font-mono mt-1 tracking-widest uppercase ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+          <p className="text-xs font-mono mt-1 tracking-widest uppercase text-slate-400">
             Sistem Info Jaga Gudang
           </p>
         </div>
 
         {/* Card Login */}
         <div
-          className={`rounded-xl border p-6 shadow-xl ${
-            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-          }`}
+          className="rounded-3xl border p-6 shadow-2xl bg-white/5 backdrop-blur-md border-white/10"
         >
-          <div className={`text-center mb-6 pb-5 border-b ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-            <h2 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+          <div className="text-center mb-6 pb-5 border-b border-white/10">
+            <h2 className="text-sm font-semibold text-slate-200">
               Login Sistem
             </h2>
-            <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+            <p className="text-xs mt-0.5 text-slate-400">
               Gunakan akun admin atau piket Anda
             </p>
           </div>
@@ -102,12 +99,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <div>
               <label
                 htmlFor="login-username"
-                className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
+                className="block text-xs font-medium mb-1.5 text-slate-300"
               >
                 Username
               </label>
               <div className="relative">
-                <UserIcon className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   id="login-username"
                   type="text"
@@ -115,11 +112,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin atau piket"
-                  className={`w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
-                    isDark
-                      ? 'bg-slate-950 border-slate-700 text-slate-100 placeholder:text-slate-600 focus:border-emerald-500'
-                      : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-emerald-500'
-                  }`}
+                  className="w-full pl-11 pr-4 py-2.5 rounded-full border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 bg-transparent border-white/30 text-white placeholder:text-slate-500 focus:border-white"
                 />
               </div>
             </div>
@@ -128,12 +121,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <div>
               <label
                 htmlFor="login-password"
-                className={`block text-xs font-medium mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
+                className="block text-xs font-medium mb-1.5 text-slate-300"
               >
                 Password
               </label>
               <div className="relative">
-                <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
@@ -141,16 +134,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className={`w-full pl-9 pr-10 py-2.5 rounded-lg border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
-                    isDark
-                      ? 'bg-slate-950 border-slate-700 text-slate-100 placeholder:text-slate-600 focus:border-emerald-500'
-                      : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-emerald-500'
-                  }`}
+                  className="w-full pl-11 pr-12 py-2.5 rounded-full border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 bg-transparent border-white/30 text-white placeholder:text-slate-500 focus:border-white"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer text-slate-400 hover:text-white"
                   tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -160,11 +149,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
             {/* Error Message */}
             {error && (
-              <div className={`p-3 rounded-lg border text-xs font-semibold flex items-start gap-2 ${
-                error.includes('dinonaktifkan')
-                  ? isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-300 text-amber-700'
-                  : isDark ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-red-50 border-red-300 text-red-700'
-              }`}>
+              <div className={`p-3 rounded-xl border text-xs font-semibold flex items-start gap-2 ${error.includes('dinonaktifkan')
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
+                }`}>
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -175,11 +163,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               id="btn-login-submit"
               type="submit"
               disabled={isLoading}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all cursor-pointer mt-1 ${
-                isLoading
-                  ? 'bg-emerald-700 text-emerald-200 cursor-not-allowed'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 active:scale-[0.98]'
-              }`}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-sm font-semibold transition-all cursor-pointer mt-4 border ${isLoading
+                  ? 'bg-transparent border-slate-500 text-slate-400 cursor-not-allowed'
+                  : 'bg-transparent border-white text-white hover:bg-white hover:text-[#0a192f] active:scale-[0.98]'
+                }`}
             >
               {isLoading ? (
                 <span className="w-4 h-4 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin" />
@@ -191,11 +178,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           </form>
         </div>
 
-        {/* Footer note */}
-        <div className={`mt-5 text-center text-[10px] font-mono leading-relaxed ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-          <p>Admin PAM: <span className="font-bold">admin / 123</span></p>
-          <p>Piket Jaga: <span className="font-bold">piket / 123</span></p>
-          <p>Piket Nonaktif: <span className="font-bold">piket2 / 123</span></p>
+        {/* Footer Copyright */}
+        <div className="mt-12 text-center">
+          <p className="text-[10px] font-mono tracking-widest uppercase text-slate-400/60">
+            &copy; 2026 BENGPUSKOMLEKAD <span className="opacity-70">x UNHAN RI</span>
+          </p>
         </div>
       </div>
     </div>

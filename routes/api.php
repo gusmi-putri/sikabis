@@ -16,6 +16,8 @@ Route::middleware('device.key')->prefix('device')->group(function () {
     Route::post('/heartbeat', [DeviceEventController::class, 'heartbeat']);
     Route::get('/command', [DeviceEventController::class, 'command']);
     Route::post('/motion-event', [DeviceEventController::class, 'motionEvent']);
+    Route::post('/ack-command', [DeviceEventController::class, 'ackCommand']);
+    Route::post('/access-log', [DeviceEventController::class, 'accessLog']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

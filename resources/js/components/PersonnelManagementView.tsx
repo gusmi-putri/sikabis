@@ -89,22 +89,20 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
   return (
     <div className="space-y-5">
       {/* ── Banner Status Perangkat Khusus Manajemen ── */}
-      <div className={`p-4 rounded-lg border shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between ${
-        isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-      }`}>
+      <div className="p-4 rounded-2xl border shadow-lg bg-white/5 backdrop-blur-md border-white/10 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`p-2.5 rounded-lg border ${
             hasPending
-              ? isDark ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 animate-pulse' : 'bg-amber-100 border-amber-300 text-amber-700 animate-pulse'
-              : isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 animate-pulse'
+              : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
           }`}>
             {hasPending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className={`text-sm font-bold font-tactical ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            <h2 className="text-sm font-bold font-tactical text-white">
               Manajemen Akses Key Box
             </h2>
-            <p className={`text-xs font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            <p className="text-xs font-mono mt-0.5 text-slate-400">
               Status Key Box: <span className={isDeviceOnline ? 'text-emerald-500' : 'text-red-500 font-bold'}>{isDeviceOnline ? 'Online & Terhubung' : 'Offline'}</span>
             </p>
           </div>
@@ -112,17 +110,13 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
 
         {hasPending && (
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-mono px-3 py-1 rounded border font-semibold ${
-              isDark ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-amber-50 border-amber-400 text-amber-800'
-            }`}>
+            <span className="text-[10px] font-mono px-3 py-1 rounded border font-semibold bg-amber-500/20 border-amber-500/50 text-amber-400">
               Memproses {deviceStatus.pending_command}... (Menunggu device)
             </span>
             <button
               onClick={handleCancelPendingCommand}
               disabled={isProcessing}
-              className={`text-[10px] px-2 py-1 rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                isDark ? 'bg-slate-800 hover:bg-red-900/40 hover:text-red-400 hover:border-red-500 border-slate-700 text-slate-300' : 'bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-400 border-slate-300 text-slate-600'
-              }`}
+              className="text-[10px] px-2 py-1 rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500 border-white/10 text-slate-300"
             >
               Batalkan
             </button>
@@ -140,11 +134,9 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
         </div>
 
         {/* Kolom Kanan: Tabel Data */}
-        <div className={`xl:col-span-2 rounded-xl border shadow-sm overflow-hidden ${
-          isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-        }`}>
-          <div className={`px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-            <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+        <div className="xl:col-span-2 rounded-2xl border shadow-lg overflow-hidden bg-white/5 backdrop-blur-md border-white/10">
+          <div className="px-5 py-4 border-b border-white/10">
+            <h3 className="text-sm font-bold text-white">
               Daftar Personel Terdaftar
             </h3>
           </div>
@@ -152,19 +144,17 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className={`text-[11px] font-mono border-b ${
-                  isDark ? 'border-slate-800 text-slate-400 bg-slate-950/40' : 'border-slate-200 text-slate-600 bg-slate-50'
-                }`}>
+                <tr className="text-[11px] font-mono border-b border-white/10 text-slate-400 bg-black/20">
                   <th className="py-3 px-4">Personel</th>
                   <th className="py-3 px-4">Fingerprint ID</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className={`divide-y text-xs ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
+              <tbody className="divide-y text-xs divide-white/5">
                 {personnelList.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className={`py-12 text-center text-sm font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <td colSpan={4} className="py-12 text-center text-sm font-mono text-slate-500">
                       Belum ada data personel.
                     </td>
                   </tr>
@@ -174,13 +164,13 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                     const isPending = p.status.includes('pending');
 
                     return (
-                      <tr key={p.id} className={isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'}>
+                      <tr key={p.id} className="transition-colors hover:bg-white/10">
                         {/* Personel */}
                         <td className="py-3 px-4">
-                          <div className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          <div className="font-semibold text-slate-200">
                             {p.name}
                           </div>
-                          <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                          <div className="text-[10px] font-mono mt-0.5 text-slate-400">
                             {p.rank_nrp || '-'}
                           </div>
                         </td>
@@ -188,8 +178,8 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                         {/* Fingerprint ID */}
                         <td className={`py-3 px-4 font-mono font-bold ${
                           p.fingerprint_id !== null 
-                            ? isDark ? 'text-emerald-400' : 'text-emerald-700' 
-                            : isDark ? 'text-slate-600' : 'text-slate-400'
+                            ? 'text-emerald-400' 
+                            : 'text-slate-500'
                         }`}>
                           {p.fingerprint_id !== null ? `#${p.fingerprint_id}` : 'Belum Ada'}
                         </td>
@@ -204,9 +194,7 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                           <button
                             onClick={() => handleEditClick(p)}
                             title="Edit data personel"
-                            className={`p-1.5 rounded transition-colors ${
-                              isDark ? 'text-slate-400 hover:bg-slate-700/50 hover:text-white' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-900'
-                            }`}
+                            className="p-1.5 rounded transition-colors bg-white/5 hover:bg-white/10 border-white/10 text-slate-300"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -216,8 +204,8 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                             title={!isActive ? 'Hanya personel aktif yang bisa dicabut' : hasPending ? 'Menunggu command pending selesai' : 'Cabut akses (Delete dari sensor)'}
                             className={`p-1.5 rounded transition-colors ${
                               !isActive || !isDeviceOnline || hasPending
-                                ? isDark ? 'text-slate-600 cursor-not-allowed' : 'text-slate-300 cursor-not-allowed'
-                                : isDark ? 'text-red-400 hover:bg-red-900/40 hover:text-red-300 cursor-pointer' : 'text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer'
+                                ? 'text-slate-600 cursor-not-allowed bg-white/5 border border-white/5'
+                                : 'text-red-400 hover:bg-red-500/20 hover:text-red-300 cursor-pointer bg-white/5 border border-white/10'
                             }`}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -359,26 +347,26 @@ function StatusBadge({ status }: { status: PersonnelStatus }) {
 
   switch (status) {
     case 'active':
-      color = isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-300';
+      color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
       label = 'Aktif';
       Icon = CheckCircle2;
       break;
     case 'pending_enroll':
-      color = isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-300';
+      color = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
       label = 'Pending Enroll';
       Icon = RefreshCw;
       break;
     case 'pending_revoke':
-      color = isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-amber-50 text-amber-700 border-amber-300';
+      color = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
       label = 'Pending Revoke';
       Icon = RefreshCw;
       break;
     case 'inactive':
-      color = isDark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-300';
+      color = 'bg-white/5 text-slate-400 border-white/10';
       label = 'Tidak Aktif';
       break;
     case 'failed':
-      color = isDark ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-red-50 text-red-700 border-red-300';
+      color = 'bg-red-500/20 text-red-400 border-red-500/50';
       label = 'Gagal / Dibatalkan';
       Icon = AlertTriangle;
       break;
