@@ -16,16 +16,24 @@ const REASON_LABELS: Record<AccessReason, string> = {
   keyakinan_rendah: 'Skor kecocokan di bawah ambang',
 };
 
+/**
+ * Nama pemilik ID sidik jari pada saat kejadian (dari backend). Log dari
+ * endpoint lama belum punya relasi itu, jadi dicari dari daftar personel.
+ */
 export function resolveDisplayName(log: AccessLog, personnelList: Personnel[]): string {
   if (log.personnel_name) return log.personnel_name;
   if (log.fingerprint_id === null) return 'Tidak dikenal';
-  const found = personnelList.find((p) => p.fingerprint_id === log.fingerprint_id);
-  return found ? found.name : `Fingerprint #${log.fingerprint_id}`;
+  if (log.event_number == null) {
+    const found = personnelList.find((p) => p.fingerprint_id === log.fingerprint_id);
+    if (found) return found.name;
+  }
+  return `Fingerprint #${log.fingerprint_id} (belum dicatat)`;
 }
 
 /** Baris keterangan di bawah nama: ID finger, alasan, skor, dan alarm. */
 export const AccessLogMeta: React.FC<{ log: AccessLog; isDark: boolean }> = ({ log, isDark }) => (
   <div className={`text-[10px] font-mono font-normal mt-0.5 space-y-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+    {log.personnel_rank_nrp && <div>{log.personnel_rank_nrp}</div>}
     <div>
       {log.fingerprint_id !== null ? `ID finger: ${log.fingerprint_id}` : 'ID finger: -'}
       {log.event_number != null && ` · kejadian #${log.event_number}`}

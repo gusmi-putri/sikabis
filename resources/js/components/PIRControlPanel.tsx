@@ -26,7 +26,6 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
 
   const isOnline = deviceStatus.status === 'online';
   const isArmed = deviceStatus.pir_mode === 'ON';
-  const hasPending = deviceStatus.pending_command !== 'NONE';
 
   const lastSeenStr = new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID', {
     hour: '2-digit',
@@ -142,13 +141,11 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
               onSetMode('ON');
               setShowTimerOptions(false);
           }}
-          disabled={isArmed || hasPending}
+          disabled={isArmed}
           title="Nyalakan sensor PIR: gerakan memicu foto + notifikasi Telegram"
           className={`flex flex-col items-start px-4 py-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer ${isArmed
                 ? isDark ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 cursor-default ring-1 ring-amber-500/30' : 'bg-amber-500 text-white cursor-default border-amber-600 shadow-md ring-2 ring-amber-200'
-              : hasPending
-                  ? isDark ? 'bg-white/5 border-white/5 text-slate-500 cursor-not-allowed' : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
-                  : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-400' : 'bg-white border-slate-200 text-slate-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-600 shadow-sm'
+              : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-400' : 'bg-white border-slate-200 text-slate-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-600 shadow-sm'
             }`}
         >
           <div className="flex items-center gap-2 w-full">
@@ -201,13 +198,11 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
             <button
               id="btn-set-activity"
               onClick={() => setShowTimerOptions(true)}
-              disabled={!isArmed || hasPending}
+              disabled={!isArmed}
               title="Matikan sensor PIR: tidak ada foto maupun notifikasi sampai dinyalakan kembali"
               className={`w-full flex flex-col items-start px-4 py-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer h-full ${!isArmed
                     ? isDark ? 'bg-red-500/20 border-red-500/50 text-red-400 cursor-default ring-1 ring-red-500/30' : 'bg-red-500 text-white cursor-default border-red-600 shadow-md ring-2 ring-red-200'
-                  : hasPending
-                      ? isDark ? 'bg-white/5 border-white/5 text-slate-500 cursor-not-allowed' : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
-                      : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-red-500/20 hover:border-red-500 hover:text-red-400' : 'bg-white border-slate-200 text-slate-600 hover:bg-red-50 hover:border-red-400 hover:text-red-600 shadow-sm'
+                  : isDark ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-red-500/20 hover:border-red-500 hover:text-red-400' : 'bg-white border-slate-200 text-slate-600 hover:bg-red-50 hover:border-red-400 hover:text-red-600 shadow-sm'
                 }`}
             >
               <div className="flex items-center gap-2 w-full">
@@ -226,12 +221,10 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
         </div>
       </div>
 
-      {/* Peringatan jika offline atau ada pending */}
-      {(!isOnline || hasPending) && (
+      {/* Peringatan jika offline */}
+      {!isOnline && (
         <p className={`text-[11px] font-mono mt-3 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          {!isOnline
-            ? 'Kontrol nonaktif — perangkat offline'
-            : `Kontrol nonaktif — ada command pending: ${deviceStatus.pending_command}`}
+          Kontrol nonaktif — perangkat offline
         </p>
       )}
     </div>

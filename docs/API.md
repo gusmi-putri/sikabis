@@ -83,10 +83,7 @@ Status live perangkat (mengembalikan objek tunggal — device pertama di tabel).
     "pir_mode": "ON",
     "flash_on": false,
     "stream_url": "http://192.168.1.17/stream",
-    "last_seen": "2026-09-17T15:02:03+00:00",
-    "pending_command": "NONE",
-    "pending_target": null,
-    "pending_since": null
+    "last_seen": "2026-09-17T15:02:03+00:00"
   }
 }
 ```
@@ -117,29 +114,26 @@ Riwayat 100 perubahan status PIR terakhir, dari web maupun Telegram.
 }
 ```
 
-### `POST /device/cancel-pending` 🔐👑
-Batalkan command `ENROLL`/`DELETE` yang belum direspon key box fisik. Personel `pending_enroll` → `failed`, `pending_revoke` → `active`.
-
 ---
 
 ## Manajemen Akses Personel (Admin PAM)
 
-### `POST /personnel/enroll` 🔐👑
-Daftarkan personel baru, status awal `pending_enroll`, memicu `pending_command: ENROLL` di device.
+Sidik jari didaftarkan langsung di Board A (perintah Serial `D`); endpoint ini hanya mencatat pemilik nomor ID-nya.
+
+### `POST /personnel` 🔐👑
+Catat personel baru, langsung berstatus `active`.
 
 ```json
-{ "name": "Praka Budi", "rank_nrp": "Praka Inf / 123...", "notes": "opsional" }
+{ "name": "Praka Budi", "rank_nrp": "Praka Inf / 123...", "fingerprint_id": 6, "notes": "opsional" }
 ```
 
-### `POST /personnel/revoke` 🔐👑
-Cabut akses personel by `fingerprint_id`, status jadi `pending_revoke`, memicu `pending_command: DELETE`.
-
-```json
-{ "fingerprint_id": 5 }
-```
+`fingerprint_id` wajib, 1-127, dan belum dipakai personel lain (`422` kalau bentrok).
 
 ### `PUT /personnel/{id}` 🔐👑
-Update data personel (nama, pangkat/NRP, catatan).
+Update nama, pangkat/NRP, catatan, dan `fingerprint_id`. Mengisi `fingerprint_id` pada personel nonaktif mengaktifkannya lagi.
+
+### `POST /personnel/{id}/deactivate` 🔐👑
+Cabut akses: status `inactive`, `fingerprint_id` dilepas agar bisa dipakai lagi. Riwayat akses tetap atas nama personel ini. Template di sensor harus dihapus terpisah di Board A.
 
 ---
 

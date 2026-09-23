@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
-    'fingerprint_id', 'result', 'reason', 'confidence', 'failed_streak', 'alarm',
+    'fingerprint_id', 'personnel_id', 'result', 'reason', 'confidence', 'failed_streak', 'alarm',
     'image_path', 'device_id', 'event_number', 'device_uptime_ms', 'missing_before', 'device_restarted',
 ])]
 class AccessLog extends Model
@@ -34,7 +34,7 @@ class AccessLog extends Model
 
     public function personnel(): BelongsTo
     {
-        return $this->belongsTo(Personnel::class, 'fingerprint_id', 'fingerprint_id');
+        return $this->belongsTo(Personnel::class);
     }
 
     public function photo(): HasOne

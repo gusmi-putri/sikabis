@@ -10,14 +10,7 @@ export type AccessReason = 'cocok' | 'tidak_cocok' | 'tidak_terbaca' | 'keyakina
 
 export type PIRMode = 'ON' | 'OFF';
 
-export type PendingCommand = 'NONE' | 'ENROLL' | 'DELETE';
-
-export type PersonnelStatus =
-  | 'pending_enroll'
-  | 'active'
-  | 'pending_revoke'
-  | 'inactive'
-  | 'failed';
+export type PersonnelStatus = 'active' | 'inactive';
 
 export type DeviceOnlineStatus = 'online' | 'offline';
 
@@ -55,7 +48,8 @@ export interface AccessLog {
 
   // Field yang di-resolve di frontend (bukan dari DB langsung):
   // Dicari berdasarkan fingerprint_id → personnel.fingerprint_id
-  personnel_name?: string;          // Nama personel, atau undefined jika tidak ketemu
+  personnel_name?: string | null;   // Nama pemilik ID saat kejadian, null jika tidak dikenal
+  personnel_rank_nrp?: string | null;
 }
 
 // ---- Model: access_photos ----
@@ -89,23 +83,29 @@ export interface DeviceStatus {
   flash_on: boolean;                // Status LED flash ESP32-CAM (tersinkron dua arah dgn Telegram)
   stream_url: string | null;        // URL MJPEG live stream, dilaporkan device sendiri via heartbeat
   last_seen: string;                // ISO 8601 string
-  pending_command: PendingCommand;  // Perintah pending ke device
-  pending_target: number | null;    // fingerprint_id target (untuk DELETE)
-  pending_since: string | null;     // ISO 8601 string, kapan command dikirim
   auto_arm_at: string | null;
 }
 
 // ---- Model: personnel ----
 // Data personel yang terdaftar di sistem.
-// PENTING: fingerprint_id bisa null (belum terdaftar / gagal enroll).
+// Sidik jari didaftarkan di Board A (perintah Serial `D`); web mencatat
+// pemilik nomor ID tersebut. fingerprint_id null = akses sudah dicabut.
 export interface Personnel {
   id: number;
   name: string;
   rank_nrp: string | null;          // Pangkat / NRP (opsional)
-  fingerprint_id: number | null;    // ID di sensor fisik (null sampai enroll berhasil)
+  fingerprint_id: number | null;    // ID di sensor fisik (null kalau tidak aktif)
   status: PersonnelStatus;
   notes: string | null;
   created_at: string;               // ISO 8601 string
+}
+
+// Data yang dikirim admin saat mencatat / mengubah personel.
+export interface PersonnelInput {
+  name: string;
+  rank_nrp?: string;
+  fingerprint_id?: number | null;   // nomor yang diketik saat perintah `D` di Board A
+  notes?: string;
 }
 
 // ---- Model: pir_mode_logs ----

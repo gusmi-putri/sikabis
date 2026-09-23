@@ -36,6 +36,7 @@ import {
   DashboardStats,
   User,
   PirModeLog,
+  PersonnelInput,
 } from '../types';
 export type NavTab = 'dashboard' | 'access-log' | 'motion-log' | 'manajemen-akses' | 'manajemen-user';
 
@@ -46,9 +47,6 @@ const EMPTY_DEVICE_STATUS: DeviceStatus = {
   flash_on: false,
   stream_url: null,
   last_seen: new Date(0).toISOString(),
-  pending_command: 'NONE',
-  pending_target: null,
-  pending_since: null,
 };
 
 export default function Dashboard() {
@@ -189,27 +187,21 @@ export default function Dashboard() {
     setDeviceStatus(EMPTY_DEVICE_STATUS);
   };
 
-  // ── Aksi: Kirim perintah ENROLL personel baru ──────────────
-  const handleEnrollPersonnel = async (data: { name: string; rank_nrp?: string; notes?: string }) => {
-    await APIService.enrollPersonnel(data);
+  // ── Aksi: Catat personel yang sidik jarinya sudah didaftarkan di Board A ──
+  const handleCreatePersonnel = async (data: PersonnelInput) => {
+    await APIService.createPersonnel(data);
     if (currentUser) await refreshData(currentUser);
   };
 
-  // ── Aksi: Cabut akses personel (command DELETE) ────────────
-  const handleRevokePersonnel = async (fingerprintId: number) => {
-    await APIService.revokePersonnel(fingerprintId);
+  // ── Aksi: Cabut akses personel ──────────────────────────────
+  const handleDeactivatePersonnel = async (id: number) => {
+    await APIService.deactivatePersonnel(id);
     if (currentUser) await refreshData(currentUser);
   };
 
   // ── Aksi: Update data personel ───────────────────────────────
-  const handleUpdatePersonnel = async (id: number, data: { name: string; rank_nrp?: string; notes?: string }) => {
+  const handleUpdatePersonnel = async (id: number, data: PersonnelInput) => {
     await APIService.updatePersonnel(id, data);
-    if (currentUser) await refreshData(currentUser);
-  };
-
-  // ── Aksi: Batalkan command pending ─────────────────────────
-  const handleCancelPendingCommand = async () => {
-    await APIService.cancelPendingCommand();
     if (currentUser) await refreshData(currentUser);
   };
 
@@ -358,11 +350,9 @@ export default function Dashboard() {
           {activeTab === 'manajemen-akses' && currentUser.role === 'admin_pam' && (
             <PersonnelManagementView
               personnelList={personnelList}
-              deviceStatus={deviceStatus}
-              onEnroll={handleEnrollPersonnel}
-              onRevoke={handleRevokePersonnel}
+              onCreate={handleCreatePersonnel}
+              onDeactivate={handleDeactivatePersonnel}
               onUpdate={handleUpdatePersonnel}
-              onCancelPending={handleCancelPendingCommand}
             />
           )}
           

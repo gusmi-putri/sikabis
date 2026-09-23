@@ -52,7 +52,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
           </div>
         </div>
         <span className={`text-[11px] font-mono px-2 py-1 rounded border ${isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
-          KEYBOX-01
+          kotak-kunci-01
         </span>
       </div>
 

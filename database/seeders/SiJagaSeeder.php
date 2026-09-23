@@ -52,8 +52,7 @@ class SiJagaSeeder extends Seeder
             ['name' => 'Serma Cpl Dedi Prasetyo', 'rank_nrp' => 'Serma Cpl / 21120045610892', 'fingerprint_id' => 3, 'status' => 'active', 'notes' => 'Teknisi gudang shift malam', 'minutes' => 7200],
             ['name' => 'Sertu Inf Agus Wijayanto', 'rank_nrp' => 'Sertu Inf / 31140089210995', 'fingerprint_id' => 4, 'status' => 'active', 'notes' => null, 'minutes' => 5000],
             ['name' => 'Kopda Chb Rian Saputra', 'rank_nrp' => 'Kopda Chb / 31180091221001', 'fingerprint_id' => 5, 'status' => 'active', 'notes' => 'Operator jaga pos 1', 'minutes' => 2000],
-            ['name' => 'Praka Inf Budi Santoso', 'rank_nrp' => 'Praka Inf / 41200099221012', 'fingerprint_id' => null, 'status' => 'pending_enroll', 'notes' => 'Personel baru, menunggu enroll fingerprint', 'minutes' => 30],
-            ['name' => 'Serda Chb Wahyu Nugroho', 'rank_nrp' => 'Serda Chb / 31190094221008', 'fingerprint_id' => 7, 'status' => 'inactive', 'notes' => 'Mutasi ke satuan lain', 'minutes' => 20000],
+            ['name' => 'Serda Chb Wahyu Nugroho', 'rank_nrp' => 'Serda Chb / 31190094221008', 'fingerprint_id' => null, 'status' => 'inactive', 'notes' => 'Mutasi ke satuan lain', 'minutes' => 20000],
         ];
 
         foreach ($personnel as $p) {
@@ -72,7 +71,7 @@ class SiJagaSeeder extends Seeder
         $accessLogs = [
             ['fingerprint_id' => 2, 'result' => 'success', 'image_path' => 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80', 'minutes' => 5],
             ['fingerprint_id' => 3, 'result' => 'success', 'image_path' => 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80', 'minutes' => 18],
-            ['fingerprint_id' => 99, 'result' => 'failed', 'image_path' => 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80', 'minutes' => 42],
+            ['fingerprint_id' => null, 'result' => 'failed', 'image_path' => 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300&auto=format&fit=crop&q=80', 'minutes' => 42],
             ['fingerprint_id' => 5, 'result' => 'success', 'image_path' => 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=300&auto=format&fit=crop&q=80', 'minutes' => 65],
             ['fingerprint_id' => 1, 'result' => 'success', 'image_path' => 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80', 'minutes' => 130],
         ];
@@ -80,9 +79,13 @@ class SiJagaSeeder extends Seeder
         foreach ($accessLogs as $log) {
             AccessLog::create([
                 'fingerprint_id' => $log['fingerprint_id'],
+                'personnel_id' => $log['fingerprint_id']
+                    ? Personnel::where('fingerprint_id', $log['fingerprint_id'])->value('id')
+                    : null,
                 'result' => $log['result'],
+                'reason' => $log['result'] === 'success' ? 'cocok' : 'tidak_cocok',
                 'image_path' => $log['image_path'],
-                'device_id' => 'KEYBOX-01',
+                'device_id' => 'kotak-kunci-01',
                 'created_at' => $ago($log['minutes']),
                 'updated_at' => $ago($log['minutes']),
             ]);
@@ -114,20 +117,6 @@ class SiJagaSeeder extends Seeder
             'status' => 'online',
             'pir_mode' => 'ON',
             'last_seen' => now()->subSeconds(30),
-            'pending_command' => 'NONE',
-            'pending_target' => null,
-            'pending_since' => null,
-        ]);
-
-        DeviceStatus::create([
-            'device_id' => 'ESP32-KEYBOX-01',
-            'api_key' => Str::random(40),
-            'status' => 'online',
-            'pir_mode' => 'OFF', // Keybox doesn't use PIR mode, default to ACTIVITY
-            'last_seen' => now()->subSeconds(10),
-            'pending_command' => 'NONE',
-            'pending_target' => null,
-            'pending_since' => null,
         ]);
 
         // Kotak kunci dua board (firmware_kotak_kunci.ino + firmware_kamera_boardB.ino).

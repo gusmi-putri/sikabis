@@ -66,8 +66,9 @@ ESP32 heartbeat rutin tiap 30 detik ──POST /api/device/heartbeat──►  D
 | Tabel | Fungsi |
 |---|---|
 | `users` | Akun login web (`role`: `admin_pam` atau `piket`) |
-| `personnel` | Personel yang terdaftar akses key box fisik |
-| `access_logs` | Riwayat scan fingerprint di key box (belum ada hardware-nya, lihat catatan di bawah) |
+| `personnel` | Personel kotak kunci: nama, pangkat/NRP, dan ID sidik jari (1-127) di sensor Board A |
+| `access_logs` | Riwayat percobaan akses kotak kunci; `personnel_id` = pemilik ID saat kejadian |
+| `access_photos` | Foto kamera kotak kunci, dipasangkan ke `access_logs` |
 | `motion_events` | Riwayat deteksi PIR + foto dari ESP32-CAM |
 | `device_statuses` | Status live tiap perangkat (online/offline, mode PIR, flash, stream URL, API key) |
 | `pir_mode_logs` | Riwayat perubahan nyala/mati sensor PIR, dengan sumber (`web`/`telegram`) dan siapa yang mengubah |
@@ -87,6 +88,14 @@ Foto motion event diupload ESP32 sebagai multipart form-data ke `POST /api/devic
 
 > **Catatan operasional:** kalau folder proyek pernah dipindah/di-restructure secara manual (bukan lewat Artisan), symlink ini bisa jadi folder kosong biasa dan foto akan 404 di browser meski file aslinya tersimpan dengan benar. Jalankan ulang `php artisan storage:link` setelah restrukturisasi apa pun.
 
-## Yang Belum Ada: Key Box Fingerprint
+## Kotak Kunci Sidik Jari
 
-Menu "Manajemen Akses" di dashboard (enroll/revoke personel, `pending_command` di `device_statuses`) sudah lengkap sisi backend & UI-nya, tapi **belum ada firmware/hardware key box fingerprint sungguhan** yang mengeksekusi command tersebut. Ini adalah perangkat IoT kedua yang terpisah dari ESP32-CAM (yang menangani PIR + kamera gudang), dan tabel `access_logs` akan tetap kosong dari data nyata sampai perangkat ini dibangun.
+Kotak kunci terdiri dari dua board yang berdiri sendiri: Board A (sensor AS608 + solenoid) mengirim log ke `POST /api/device/keybox/log`, Board B (ESP32-CAM) memotret saat jari menempel dan mengirim foto ke `POST /api/device/keybox/foto`. Server memasangkan foto dengan log berdasarkan jam kedatangan (lihat [API.md](API.md#kotak-kunci-dua-board)).
+
+**Pendaftaran sidik jari tidak lewat web.** Perangkat pintu sengaja tidak menerima perintah dari jaringan. Alurnya:
+
+1. Petugas mendaftarkan jari di Board A lewat Serial Monitor (perintah `D`, lalu nomor ID 1-127).
+2. Admin PAM mencatat nama, pangkat/NRP, dan nomor ID yang sama di menu **Manajemen Akses**.
+3. Mencabut akses di web melepas ID dari personel itu; **template di sensor tetap harus dihapus di Board A**, karena selama masih tersimpan jari itu tetap bisa membuka kotak.
+
+Setiap log menyimpan `personnel_id` pemilik ID saat kejadian, sehingga riwayat lama tidak berpindah nama ketika nomor ID dipakai ulang oleh personel lain.

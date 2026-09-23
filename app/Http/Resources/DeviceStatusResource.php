@@ -19,9 +19,6 @@ class DeviceStatusResource extends JsonResource
             'flash_on' => (bool) $this->flash_on,
             'stream_url' => $this->stream_url,
             'last_seen' => $this->last_seen?->toIso8601String(),
-            'pending_command' => $this->pending_command,
-            'pending_target' => $this->pending_target,
-            'pending_since' => $this->pending_since?->toIso8601String(),
         ];
     }
 }

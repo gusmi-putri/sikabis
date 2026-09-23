@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccessLog;
 use App\Models\AccessPhoto;
 use App\Models\DeviceStatus;
+use App\Models\Personnel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,9 +75,13 @@ class KeyBoxController extends Controller
 
             $photo = $this->findPhotoFor($device);
             $isMatch = $data['hasil'] === 'cocok';
+            $fingerprintId = $isMatch && $data['id_sidik_jari'] > 0 ? $data['id_sidik_jari'] : null;
 
             $log = AccessLog::create([
-                'fingerprint_id' => $isMatch && $data['id_sidik_jari'] > 0 ? $data['id_sidik_jari'] : null,
+                'fingerprint_id' => $fingerprintId,
+                'personnel_id' => $fingerprintId
+                    ? Personnel::where('fingerprint_id', $fingerprintId)->where('status', 'active')->value('id')
+                    : null,
                 'result' => $isMatch ? 'success' : 'failed',
                 'reason' => $data['hasil'],
                 'confidence' => $data['keyakinan'],

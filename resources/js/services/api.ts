@@ -10,10 +10,24 @@ import {
   MotionEvent,
   DeviceStatus,
   Personnel,
+  PersonnelInput,
   User,
   PIRMode,
   PirModeLog
 } from '../types';
+
+/**
+ * Pesan yang layak ditampilkan dari error request: pesan validasi
+ * pertama dari Laravel (422), atau pesan umum.
+ */
+export function apiErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const errors = err.response?.data?.errors as Record<string, string[]> | undefined;
+    const first = errors && Object.values(errors)[0]?.[0];
+    return first || err.response?.data?.message || 'Gagal menghubungi server.';
+  }
+  return 'Terjadi kesalahan.';
+}
 
 // Konfigurasi dasar Axios
 const api = axios.create({
@@ -117,13 +131,6 @@ export const APIService = {
   },
 
   /**
-   * Batalkan command pending (ENROLL/DELETE) yang belum direspon key box.
-   */
-  cancelPendingCommand: async (): Promise<void> => {
-    await api.post('/device/cancel-pending');
-  },
-
-  /**
    * Riwayat nyala/mati sensor PIR, dari web maupun Telegram.
    */
   getPirModeLogs: async (): Promise<PirModeLog[]> => {
@@ -134,24 +141,24 @@ export const APIService = {
   // ── 4. MANAJEMEN AKSES KEY BOX (FISIK) ──────────────────────────
 
   /**
-   * Mendaftarkan personel baru, memicu command ENROLL ke Key Box.
+   * Mencatat personel yang sidik jarinya sudah didaftarkan di Board A.
    */
-  enrollPersonnel: async (data: { name: string; rank_nrp?: string; notes?: string }): Promise<Personnel> => {
-    const response = await api.post('/personnel/enroll', data);
+  createPersonnel: async (data: PersonnelInput): Promise<Personnel> => {
+    const response = await api.post('/personnel', data);
     return response.data.data || response.data;
   },
 
   /**
-   * Mencabut akses personel, memicu command DELETE ke Key Box.
+   * Mencabut akses personel dan melepas ID sidik jarinya.
    */
-  revokePersonnel: async (fingerprintId: number): Promise<void> => {
-    await api.post('/personnel/revoke', { fingerprint_id: fingerprintId });
+  deactivatePersonnel: async (id: number): Promise<void> => {
+    await api.post(`/personnel/${id}/deactivate`);
   },
 
   /**
-   * Memperbarui data personel (nama, pangkat/NRP, catatan).
+   * Memperbarui data personel (nama, pangkat/NRP, ID sidik jari, catatan).
    */
-  updatePersonnel: async (id: number, data: { name: string; rank_nrp?: string; notes?: string }): Promise<Personnel> => {
+  updatePersonnel: async (id: number, data: PersonnelInput): Promise<Personnel> => {
     const response = await api.put(`/personnel/${id}`, data);
     return response.data.data || response.data;
   },

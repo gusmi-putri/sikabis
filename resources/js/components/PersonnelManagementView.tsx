@@ -2,48 +2,43 @@
  * SI-JAGA — PersonnelManagementView.tsx
  * Halaman Manajemen Akses Personel.
  * Menampilkan daftar personel dan form registrasi.
- * Mendukung command pending dan konfirmasi cabut akses.
+ * Sidik jari didaftarkan/dihapus langsung di Board A; halaman ini
+ * mencatat pemilik tiap ID sidik jari.
  */
 
 import React, { useState } from 'react';
-import { Shield, Trash2, CheckCircle2, AlertTriangle, Fingerprint, RefreshCw, Edit2, X } from 'lucide-react';
+import { Shield, Trash2, CheckCircle2, AlertTriangle, Edit2, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { Personnel, DeviceStatus, PersonnelStatus } from '../types';
+import { Personnel, PersonnelInput, PersonnelStatus } from '../types';
 import { PersonnelRegistrationCard } from './PersonnelRegistrationCard';
+import { apiErrorMessage } from '../services/api';
 
 interface PersonnelManagementViewProps {
   personnelList: Personnel[];
-  deviceStatus: DeviceStatus;
-  onEnroll: (data: { name: string; rank_nrp?: string; notes?: string }) => Promise<void>;
-  onRevoke: (fingerprintId: number) => Promise<void>;
-  onUpdate: (id: number, data: { name: string; rank_nrp?: string; notes?: string }) => Promise<void>;
-  onCancelPending: () => Promise<void>;
+  onCreate: (data: PersonnelInput) => Promise<void>;
+  onDeactivate: (id: number) => Promise<void>;
+  onUpdate: (id: number, data: PersonnelInput) => Promise<void>;
 }
 
 export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = ({
   personnelList,
-  deviceStatus,
-  onEnroll,
-  onRevoke,
+  onCreate,
+  onDeactivate,
   onUpdate,
-  onCancelPending,
 }) => {
   const { isDark } = useTheme();
   const [personToRevoke, setPersonToRevoke] = useState<Personnel | null>(null);
   const [personToEdit, setPersonToEdit] = useState<Personnel | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', rank_nrp: '', notes: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', rank_nrp: '', fingerprint_id: '', notes: '' });
+  const [editError, setEditError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const isDeviceOnline = deviceStatus.status === 'online';
-  const hasPending = deviceStatus.pending_command !== 'NONE';
-
   const handleRevokeConfirm = async () => {
-    if (!personToRevoke || personToRevoke.fingerprint_id === null) return;
+    if (!personToRevoke) return;
 
     setIsProcessing(true);
     try {
-      // Kirim perintah DELETE ke key box fisik lewat backend Laravel.
-      await onRevoke(personToRevoke.fingerprint_id);
+      await onDeactivate(personToRevoke.id);
       setPersonToRevoke(null);
     } finally {
       setIsProcessing(false);
@@ -52,9 +47,11 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
 
   const handleEditClick = (person: Personnel) => {
     setPersonToEdit(person);
+    setEditError(null);
     setEditFormData({
       name: person.name,
       rank_nrp: person.rank_nrp || '',
+      fingerprint_id: person.fingerprint_id?.toString() ?? '',
       notes: person.notes || '',
     });
   };
@@ -64,23 +61,17 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
     if (!personToEdit) return;
 
     setIsProcessing(true);
+    setEditError(null);
     try {
       await onUpdate(personToEdit.id, {
         name: editFormData.name,
         rank_nrp: editFormData.rank_nrp || undefined,
+        fingerprint_id: editFormData.fingerprint_id ? Number(editFormData.fingerprint_id) : null,
         notes: editFormData.notes || undefined,
       });
       setPersonToEdit(null);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Aksi khusus (Demo/Admin): Batalkan pending command
-  const handleCancelPendingCommand = async () => {
-    setIsProcessing(true);
-    try {
-      await onCancelPending();
+    } catch (err) {
+      setEditError(apiErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -91,45 +82,26 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
       {/* ── Banner Status Perangkat Khusus Manajemen ── */}
       <div className="p-4 rounded-2xl border shadow-lg bg-white/5 backdrop-blur-md border-white/10 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-lg border ${
-            hasPending
-              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 animate-pulse'
-              : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-          }`}>
-            {hasPending ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+          <div className="p-2.5 rounded-lg border bg-emerald-500/20 border-emerald-500/30 text-emerald-400">
+            <Shield className="w-5 h-5" />
           </div>
           <div>
             <h2 className="text-sm font-bold font-tactical text-white">
               Manajemen Akses Key Box
             </h2>
             <p className="text-xs font-mono mt-0.5 text-slate-400">
-              Status Key Box: <span className={isDeviceOnline ? 'text-emerald-500' : 'text-red-500 font-bold'}>{isDeviceOnline ? 'Online & Terhubung' : 'Offline'}</span>
+              {personnelList.filter((p) => p.status === 'active').length} personel aktif · ID sidik jari 1-127
             </p>
           </div>
         </div>
-
-        {hasPending && (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono px-3 py-1 rounded border font-semibold bg-amber-500/20 border-amber-500/50 text-amber-400">
-              Memproses {deviceStatus.pending_command}... (Menunggu device)
-            </span>
-            <button
-              onClick={handleCancelPendingCommand}
-              disabled={isProcessing}
-              className="text-[10px] px-2 py-1 rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500 border-white/10 text-slate-300"
-            >
-              Batalkan
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
         {/* Kolom Kiri: Form Registrasi */}
         <div className="xl:col-span-1">
           <PersonnelRegistrationCard
-            deviceStatus={deviceStatus}
-            onEnroll={onEnroll}
+            personnelList={personnelList}
+            onCreate={onCreate}
           />
         </div>
 
@@ -161,7 +133,6 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                 ) : (
                   personnelList.map(p => {
                     const isActive = p.status === 'active';
-                    const isPending = p.status.includes('pending');
 
                     return (
                       <tr key={p.id} className="transition-colors hover:bg-white/10">
@@ -181,7 +152,7 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                             ? 'text-emerald-400' 
                             : 'text-slate-500'
                         }`}>
-                          {p.fingerprint_id !== null ? `#${p.fingerprint_id}` : 'Belum Ada'}
+                          {p.fingerprint_id !== null ? `#${p.fingerprint_id}` : '-'}
                         </td>
 
                         {/* Status Badge */}
@@ -200,10 +171,10 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                           </button>
                           <button
                             onClick={() => setPersonToRevoke(p)}
-                            disabled={!isActive || !isDeviceOnline || hasPending}
-                            title={!isActive ? 'Hanya personel aktif yang bisa dicabut' : hasPending ? 'Menunggu command pending selesai' : 'Cabut akses (Delete dari sensor)'}
+                            disabled={!isActive}
+                            title={!isActive ? 'Hanya personel aktif yang bisa dicabut' : 'Cabut akses'}
                             className={`p-1.5 rounded transition-colors ${
-                              !isActive || !isDeviceOnline || hasPending
+                              !isActive
                                 ? 'text-slate-600 cursor-not-allowed bg-white/5 border border-white/5'
                                 : 'text-red-400 hover:bg-red-500/20 hover:text-red-300 cursor-pointer bg-white/5 border border-white/10'
                             }`}
@@ -234,10 +205,11 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
             
             <p className={`text-sm mb-4 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
               Anda akan mencabut akses untuk <strong>{personToRevoke.name}</strong>.
-              Sistem akan mengirim perintah DELETE ke sensor key box fisik.
+              ID sidik jarinya dilepas dan riwayat aksesnya tetap tersimpan.
             </p>
-            <div className={`p-3 rounded border text-xs font-mono mb-5 ${isDark ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-              Finger ID: <span className="font-bold">{personToRevoke.fingerprint_id}</span>
+            <div className={`p-3 rounded border text-xs font-mono mb-5 leading-relaxed ${isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+              <span className="font-bold">Wajib:</span> hapus juga template ID <span className="font-bold">#{personToRevoke.fingerprint_id}</span> di sensor Board A.
+              Selama template masih tersimpan, jari ini tetap bisa membuka kotak kunci.
             </div>
 
             <div className="flex gap-3 justify-end">
@@ -277,6 +249,13 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
             </div>
             
             <form onSubmit={handleUpdateConfirm} className="space-y-4">
+              {editError && (
+                <div className="p-3 rounded border flex gap-2 text-xs bg-red-500/10 border-red-500/30 text-red-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {editError}
+                </div>
+              )}
+
               <div>
                 <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Nama Lengkap</label>
                 <input
@@ -297,6 +276,26 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                   value={editFormData.rank_nrp}
                   onChange={(e) => setEditFormData({ ...editFormData, rank_nrp: e.target.value })}
                   className={`w-full px-3 py-2 rounded border text-sm ${
+                    isDark ? 'bg-slate-950 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                  } focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                />
+              </div>
+
+              <div>
+                <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  ID Sidik Jari{' '}
+                  <span className="text-slate-500 font-normal">
+                    {personToEdit.status === 'active' ? '(sama dengan di Board A)' : '(isi untuk mengaktifkan lagi)'}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={127}
+                  required={personToEdit.status === 'active'}
+                  value={editFormData.fingerprint_id}
+                  onChange={(e) => setEditFormData({ ...editFormData, fingerprint_id: e.target.value })}
+                  className={`w-full px-3 py-2 rounded border text-sm font-mono ${
                     isDark ? 'bg-slate-950 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
                   } focus:outline-none focus:ring-1 focus:ring-blue-500`}
                 />
@@ -340,42 +339,18 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
 
 // --- Helper Component: StatusBadge ---
 function StatusBadge({ status }: { status: PersonnelStatus }) {
-  const { isDark } = useTheme();
-  let color = '';
-  let label = '';
-  let Icon = null;
-
-  switch (status) {
-    case 'active':
-      color = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
-      label = 'Aktif';
-      Icon = CheckCircle2;
-      break;
-    case 'pending_enroll':
-      color = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
-      label = 'Pending Enroll';
-      Icon = RefreshCw;
-      break;
-    case 'pending_revoke':
-      color = 'bg-amber-500/20 text-amber-400 border-amber-500/50';
-      label = 'Pending Revoke';
-      Icon = RefreshCw;
-      break;
-    case 'inactive':
-      color = 'bg-white/5 text-slate-400 border-white/10';
-      label = 'Tidak Aktif';
-      break;
-    case 'failed':
-      color = 'bg-red-500/20 text-red-400 border-red-500/50';
-      label = 'Gagal / Dibatalkan';
-      Icon = AlertTriangle;
-      break;
+  if (status === 'active') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono font-semibold border bg-emerald-500/20 text-emerald-400 border-emerald-500/50">
+        <CheckCircle2 className="w-3 h-3" />
+        Aktif
+      </span>
+    );
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono font-semibold border ${color}`}>
-      {Icon && <Icon className={`w-3 h-3 ${status.includes('pending') ? 'animate-spin' : ''}`} />}
-      {label}
+    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono font-semibold border bg-white/5 text-slate-400 border-white/10">
+      Tidak Aktif
     </span>
   );
 }

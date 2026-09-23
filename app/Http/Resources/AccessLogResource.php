@@ -27,6 +27,7 @@ class AccessLogResource extends JsonResource
             'device_restarted' => (bool) $this->device_restarted,
             'created_at' => $this->created_at?->toIso8601String(),
             'personnel_name' => $this->whenLoaded('personnel', fn () => $this->personnel?->name),
+            'personnel_rank_nrp' => $this->whenLoaded('personnel', fn () => $this->personnel?->rank_nrp),
         ];
     }
 }

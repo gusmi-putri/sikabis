@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Model;
 
-#[Fillable(['device_id', 'api_key', 'status', 'pir_mode', 'flash_on', 'stream_url', 'camera_device_id', 'last_seen', 'pending_command', 'pending_target', 'pending_since'])]
+#[Fillable(['device_id', 'api_key', 'status', 'pir_mode', 'flash_on', 'stream_url', 'camera_device_id', 'last_seen'])]
 #[Hidden(['api_key'])]
 class DeviceStatus extends Model
 {
@@ -22,8 +22,6 @@ class DeviceStatus extends Model
     {
         return [
             'last_seen' => 'datetime',
-            'pending_since' => 'datetime',
-            'pending_target' => 'integer',
             'flash_on' => 'boolean',
         ];
     }

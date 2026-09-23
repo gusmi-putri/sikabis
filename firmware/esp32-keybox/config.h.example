@@ -1,8 +1,0 @@
-#pragma once
-
-const char* WIFI_SSID     = "GANTI_DENGAN_SSID";
-const char* WIFI_PASSWORD = "GANTI_DENGAN_PASSWORD";
-
-const char* API_BASE_URL_VAL = "http://192.168.1.37:8000/api";
-const char* DEVICE_ID_VAL    = "ESP32-KEYBOX-01";
-const char* DEVICE_API_KEY_VAL = "GANTI_DENGAN_API_KEY_KEYBOX";

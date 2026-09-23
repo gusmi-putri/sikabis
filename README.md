@@ -7,7 +7,7 @@ Dikembangkan untuk **Bengpuskomlekad** sebagai sistem kontrol akses dan monitori
 ## Fitur
 
 - **Dashboard real-time** — statistik akses 24 jam, status perangkat, live camera feed.
-- **Manajemen akses key box** — enroll/revoke personel dengan sinkronisasi ke sensor fingerprint fisik.
+- **Manajemen akses key box** — catat nama, pangkat/NRP, dan ID sidik jari personel yang didaftarkan di kotak kunci; setiap percobaan akses (berhasil maupun gagal) tercatat beserta foto kamera.
 - **Kontrol sensor PIR** — nyala/matikan sensor gerak dari web, tersinkron dua arah dengan Telegram.
 - **Kontrol flash LED** ESP32-CAM dari web maupun Telegram.
 - **Live streaming MJPEG** langsung dari kamera ESP32-CAM, ditampilkan di dashboard.
@@ -81,7 +81,7 @@ Login default (dari seeder): `admin` / `123` (Admin PAM), `piket` / `123` (Piket
 
 - ✅ Web dashboard (React + Inertia + Laravel) — selesai & teruji.
 - ✅ Integrasi ESP32-CAM (motion capture, live stream, kontrol PIR/flash) — selesai & teruji.
-- ⏳ Key box fingerprint (KEYBOX-01) — belum diimplementasikan; saat ini menu "Manajemen Akses" di web sudah siap sisi software-nya, tapi perangkat fisiknya masih terpisah dan perlu firmware sendiri.
+- ✅ Kotak kunci dua board (Board A sidik jari `kotak-kunci-01` + Board B ESP32-CAM `kotak-kunci-cam-01`) — endpoint penerima log & foto siap; daftarkan dengan `php artisan keybox:register`. Firmware-nya dikelola terpisah.
 
 ## Lisensi
 

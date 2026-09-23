@@ -17,8 +17,6 @@ Route::middleware('device.key')->prefix('device')->group(function () {
     Route::post('/heartbeat', [DeviceEventController::class, 'heartbeat']);
     Route::get('/command', [DeviceEventController::class, 'command']);
     Route::post('/motion-event', [DeviceEventController::class, 'motionEvent']);
-    Route::post('/ack-command', [DeviceEventController::class, 'ackCommand']);
-    Route::post('/access-log', [DeviceEventController::class, 'accessLog']);
 
     // Kotak kunci dua board: Board A (sidik jari) & Board B (ESP32-CAM)
     Route::post('/keybox/log', [KeyBoxController::class, 'log']);
@@ -39,10 +37,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Khusus Admin PAM
     Route::middleware('role:admin_pam')->group(function () {
-        Route::post('/personnel/enroll', [PersonnelController::class, 'enroll']);
-        Route::post('/personnel/revoke', [PersonnelController::class, 'revoke']);
+        Route::post('/personnel', [PersonnelController::class, 'store']);
         Route::put('/personnel/{personnel}', [PersonnelController::class, 'update']);
-        Route::post('/device/cancel-pending', [DeviceStatusController::class, 'cancelPending']);
+        Route::post('/personnel/{personnel}/deactivate', [PersonnelController::class, 'deactivate']);
 
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);

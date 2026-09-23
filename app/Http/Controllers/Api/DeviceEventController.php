@@ -70,8 +70,6 @@ class DeviceEventController extends Controller
         return response()->json([
             'pir_mode' => $device->pir_mode,
             'flash_on' => (bool) $device->flash_on,
-            'pending_command' => $device->pending_command,
-            'pending_target' => $device->pending_target,
         ]);
     }
 
@@ -99,89 +97,5 @@ class DeviceEventController extends Controller
         $device->update(['status' => 'online', 'last_seen' => now()]);
 
         return response()->json(['id' => $event->id], 201);
-    }
-
-    /**
-     * Dipanggil oleh Key Box setelah mencoba menjalankan perintah ENROLL atau DELETE.
-     */
-    public function ackCommand(Request $request)
-    {
-        $data = $request->validate([
-            'command' => ['required', 'in:ENROLL,DELETE'],
-            'target' => ['nullable', 'integer'], // Untuk ENROLL, ini adalah ID yang baru di-assign. Untuk DELETE, ini ID yang dihapus.
-            'success' => ['required', 'boolean'],
-        ]);
-
-        $device = $request->attributes->get('device');
-
-        if ($data['command'] === 'ENROLL') {
-            $personnel = \App\Models\Personnel::where('status', 'pending_enroll')->first();
-            if ($personnel) {
-                if ($data['success'] && $data['target'] !== null) {
-                    $personnel->update([
-                        'status' => 'active',
-                        'fingerprint_id' => $data['target']
-                    ]);
-                } else {
-                    $personnel->update(['status' => 'failed']);
-                }
-            }
-        } elseif ($data['command'] === 'DELETE') {
-            $personnel = \App\Models\Personnel::where('fingerprint_id', $data['target'])
-                ->where('status', 'pending_revoke')
-                ->first();
-            if ($personnel) {
-                if ($data['success']) {
-                    $personnel->update([
-                        'status' => 'inactive',
-                        'fingerprint_id' => null // Lepaskan ID agar bisa dipakai orang lain
-                    ]);
-                } else {
-                    $personnel->update(['status' => 'active']);
-                }
-            }
-        }
-
-        // Bersihkan pending_command di device status
-        $device->update([
-            'pending_command' => 'NONE',
-            'pending_target' => null,
-            'pending_since' => null,
-            'status' => 'online',
-            'last_seen' => now()
-        ]);
-
-        return response()->json(null, 204);
-    }
-
-    /**
-     * Dipanggil oleh Key Box setiap kali seseorang menscan sidik jari.
-     */
-    public function accessLog(Request $request)
-    {
-        $data = $request->validate([
-            'fingerprint_id' => ['required', 'integer'],
-            'result' => ['required', 'in:success,failed'],
-            'photo' => ['nullable', 'image', 'max:5120'],
-        ]);
-
-        $device = $request->attributes->get('device');
-        
-        $imagePath = null;
-        if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('access-logs', 'public');
-            $imagePath = Storage::disk('public')->url($path);
-        }
-
-        $log = \App\Models\AccessLog::create([
-            'fingerprint_id' => $data['fingerprint_id'],
-            'result' => $data['result'],
-            'image_path' => $imagePath,
-            'device_id' => $device->device_id,
-        ]);
-
-        $device->update(['status' => 'online', 'last_seen' => now()]);
-
-        return response()->json(['id' => $log->id], 201);
     }
 }
