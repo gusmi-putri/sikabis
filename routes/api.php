@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccessLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceEventController;
 use App\Http\Controllers\Api\DeviceStatusController;
+use App\Http\Controllers\Api\KeyBoxController;
 use App\Http\Controllers\Api\MotionEventController;
 use App\Http\Controllers\Api\PersonnelController;
 use App\Http\Controllers\Api\UserController;
@@ -18,12 +19,17 @@ Route::middleware('device.key')->prefix('device')->group(function () {
     Route::post('/motion-event', [DeviceEventController::class, 'motionEvent']);
     Route::post('/ack-command', [DeviceEventController::class, 'ackCommand']);
     Route::post('/access-log', [DeviceEventController::class, 'accessLog']);
+
+    // Kotak kunci dua board: Board A (sidik jari) & Board B (ESP32-CAM)
+    Route::post('/keybox/log', [KeyBoxController::class, 'log']);
+    Route::post('/keybox/foto', [KeyBoxController::class, 'photo']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::get('/access-logs', [AccessLogController::class, 'index']);
+    Route::get('/access-photos/unpaired', [AccessLogController::class, 'unpairedPhotos']);
     Route::get('/motion-events', [MotionEventController::class, 'index']);
     Route::get('/personnel', [PersonnelController::class, 'index']);
     Route::get('/device-status', [DeviceStatusController::class, 'show']);

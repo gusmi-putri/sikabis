@@ -10,6 +10,10 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Autentikasi perangkat IoT (ESP32) memakai header X-Device-Key,
  * terpisah dari Sanctum yang dipakai operator/admin di web SPA.
+ *
+ * Firmware kotak kunci dua board mengirim identitasnya lewat field
+ * `perangkat` dan kuncinya lewat `Authorization: Bearer`, jadi kedua
+ * format itu juga diterima.
  */
 class EnsureValidDeviceKey
 {
@@ -18,11 +22,11 @@ class EnsureValidDeviceKey
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $deviceId = $request->input('device_id');
-        $key = $request->header('X-Device-Key');
+        $deviceId = $request->input('device_id') ?? $request->input('perangkat');
+        $key = $request->header('X-Device-Key') ?? $request->bearerToken();
 
         if (! $deviceId || ! $key) {
-            abort(401, 'device_id dan X-Device-Key wajib disertakan.');
+            abort(401, 'device_id/perangkat dan X-Device-Key/Bearer token wajib disertakan.');
         }
 
         $device = DeviceStatus::where('device_id', $deviceId)

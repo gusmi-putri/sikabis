@@ -10,6 +10,7 @@ Artisan::command('inspire', function () {
 use Illuminate\Support\Facades\Schedule;
 use App\Models\DeviceStatus;
 use App\Models\PirModeLog;
+use Illuminate\Support\Str;
 
 Schedule::call(function () {
     $expiredDevices = DeviceStatus::whereNotNull('auto_arm_at')
@@ -30,3 +31,22 @@ Schedule::call(function () {
         ]);
     }
 })->everyMinute();
+
+Artisan::command('keybox:register
+    {device=kotak-kunci-01 : ID Board A (sidik jari), sama dengan ID_PERANGKAT di firmware_kotak_kunci.ino}
+    {camera=kotak-kunci-cam-01 : ID Board B (kamera), sama dengan ID_PERANGKAT di firmware_kamera_boardB.ino}', function (string $device, string $camera) {
+    $keys = [];
+
+    foreach ([$camera => null, $device => $camera] as $deviceId => $cameraDeviceId) {
+        $status = DeviceStatus::firstOrNew(['device_id' => $deviceId]);
+        $status->api_key ??= Str::random(40);
+        $status->pir_mode ??= 'OFF';
+        $status->camera_device_id = $cameraDeviceId;
+        $status->save();
+
+        $keys[] = [$deviceId, $status->api_key];
+    }
+
+    $this->table(['device_id / ID_PERANGKAT', 'api_key / SERVER_TOKEN'], $keys);
+    $this->info('Salin api_key ke SERVER_TOKEN di firmware masing-masing board.');
+})->purpose('Daftarkan pasangan board kotak kunci (sidik jari + kamera) dan tampilkan API key-nya');

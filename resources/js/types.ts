@@ -6,6 +6,8 @@
 
 export type AccessResult = 'success' | 'failed';
 
+export type AccessReason = 'cocok' | 'tidak_cocok' | 'tidak_terbaca' | 'keyakinan_rendah';
+
 export type PIRMode = 'ON' | 'OFF';
 
 export type PendingCommand = 'NONE' | 'ENROLL' | 'DELETE';
@@ -37,15 +39,35 @@ export interface User {
 // kamera memotret dan data ini dicatat di backend.
 export interface AccessLog {
   id: number;
-  fingerprint_id: number;           // ID finger yang ter-scan di sensor
+  fingerprint_id: number | null;    // ID finger yang cocok di sensor; null kalau percobaan gagal
   result: AccessResult;             // 'success' | 'failed'
+  // Field kotak kunci dua board; kosong untuk log dari endpoint lama.
+  reason?: AccessReason | null;     // hasil detail dari firmware kotak kunci (null untuk log lama)
+  confidence?: number | null;       // skor kecocokan AS608 0-255
+  failed_streak?: number | null;    // gagal berturut-turut sampai kejadian ini
+  alarm?: boolean;                  // alarm buzzer sedang berbunyi saat log dibuat
   image_path: string | null;        // path foto dari kamera key box (nullable)
   device_id: string;
-  created_at: string;               // ISO 8601 string
+  event_number?: number | null;     // nomor_kejadian dari Board A
+  missing_before?: number;          // jumlah log yang hilang tepat sebelum log ini
+  device_restarted?: boolean;       // Board A menyala ulang sebelum log ini
+  created_at: string;               // ISO 8601 string (jam server)
 
   // Field yang di-resolve di frontend (bukan dari DB langsung):
   // Dicari berdasarkan fingerprint_id → personnel.fingerprint_id
   personnel_name?: string;          // Nama personel, atau undefined jika tidak ketemu
+}
+
+// ---- Model: access_photos ----
+// Foto dari kamera kotak kunci (Board B) yang tidak pernah mendapat
+// pasangan log dari Board A, misalnya karena lognya hilang.
+export interface AccessPhoto {
+  id: number;
+  device_id: string;
+  trigger_number: number;           // nomor_pemicu dari Board B
+  image_path: string;
+  access_log_id: number | null;
+  created_at: string;               // ISO 8601 string (jam server)
 }
 
 // ---- Model: motion_events ----

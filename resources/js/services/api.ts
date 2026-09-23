@@ -6,6 +6,7 @@
 import axios from 'axios';
 import {
   AccessLog,
+  AccessPhoto,
   MotionEvent,
   DeviceStatus,
   Personnel,
@@ -72,6 +73,11 @@ export const APIService = {
 
   getAccessLogs: async (): Promise<AccessLog[]> => {
     const response = await api.get('/access-logs');
+    return response.data.data || response.data;
+  },
+
+  getUnpairedAccessPhotos: async (): Promise<AccessPhoto[]> => {
+    const response = await api.get('/access-photos/unpaired');
     return response.data.data || response.data;
   },
 

@@ -5,34 +5,45 @@
  */
 
 import React, { useState } from 'react';
-import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
-import { AccessLog, Personnel } from '../types';
+import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff } from 'lucide-react';
+import { AccessLog, AccessPhoto, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
+import { AccessLogMeta, MissingLogsRow, resolveDisplayName } from './AccessLogDetail';
 
 interface AccessLogViewProps {
   logs: AccessLog[];
   personnelList: Personnel[];
+  unpairedPhotos: AccessPhoto[];
 }
 
-function resolveDisplayName(log: AccessLog, personnelList: Personnel[]): string {
-  if (log.personnel_name) return log.personnel_name;
-  const found = personnelList.find((p) => p.fingerprint_id === log.fingerprint_id);
-  return found ? found.name : `Fingerprint #${log.fingerprint_id}`;
+interface ZoomTarget {
+  imageUrl: string;
+  title: string;
+  subtitle: string;
 }
 
-export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelList }) => {
+export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelList, unpairedPhotos }) => {
   const { isDark } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [zoomPhoto, setZoomPhoto] = useState<AccessLog | null>(null);
+  const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
+
+  const openLogPhoto = (log: AccessLog) => {
+    if (!log.image_path) return;
+    setZoomTarget({
+      imageUrl: log.image_path,
+      title: resolveDisplayName(log, personnelList),
+      subtitle: `${new Date(log.created_at).toLocaleString('id-ID')} · ID finger: ${log.fingerprint_id ?? '-'}`,
+    });
+  };
 
   const itemsPerPage = 10;
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
     const name = resolveDisplayName(log, personnelList).toLowerCase();
-    const idStr = log.fingerprint_id.toString();
+    const idStr = log.fingerprint_id?.toString() ?? '';
     const search = searchTerm.toLowerCase();
     return name.includes(search) || idStr.includes(search);
   });
@@ -103,7 +114,8 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
                   const isSuccess = log.result === 'success';
                   const displayName = resolveDisplayName(log, personnelList);
                   return (
-                    <tr key={log.id} className="transition-colors hover:bg-white/10">
+                    <React.Fragment key={log.id}>
+                    <tr className="transition-colors hover:bg-white/10">
                       {/* Waktu */}
                       <td className="py-3 px-4 font-mono whitespace-nowrap text-slate-300">
                         {new Date(log.created_at).toLocaleString('id-ID')} WIB
@@ -113,7 +125,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
                       <td className="py-3 px-4">
                         {log.image_path ? (
                           <button
-                            onClick={() => setZoomPhoto(log)}
+                            onClick={() => openLogPhoto(log)}
                             className={`w-10 h-10 rounded border overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${
                               isSuccess ? 'border-emerald-500/40' : 'border-red-500/40'
                             }`}
@@ -130,9 +142,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
                       {/* Personel */}
                       <td className="py-3 px-4 font-semibold text-slate-200">
                         {displayName}
-                        <div className="text-[10px] font-mono font-normal mt-0.5 text-slate-400">
-                          Finger ID: {log.fingerprint_id}
-                        </div>
+                        <AccessLogMeta log={log} isDark={isDark} />
                       </td>
 
                       {/* Device */}
@@ -151,6 +161,8 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
                         </span>
                       </td>
                     </tr>
+                    <MissingLogsRow log={log} colSpan={5} isDark={isDark} />
+                    </React.Fragment>
                   );
                 })
               )}
@@ -192,13 +204,50 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
         )}
       </div>
 
+      {/* Foto kamera key box yang tidak punya pasangan log */}
+      {unpairedPhotos.length > 0 && (
+        <div className="rounded-2xl border shadow-lg p-5 bg-amber-500/5 backdrop-blur-md border-amber-500/30">
+          <div className="flex items-center gap-2 mb-1">
+            <CameraOff className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-bold text-amber-300">
+              Foto Tanpa Log ({unpairedPhotos.length})
+            </h3>
+          </div>
+          <p className="text-[11px] font-mono mb-4 text-slate-400">
+            Kamera memotret percobaan akses, tetapi log sidik jarinya tidak pernah sampai ke server.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {unpairedPhotos.map((photo) => (
+              <button
+                key={photo.id}
+                onClick={() => setZoomTarget({
+                  imageUrl: photo.image_path,
+                  title: 'Foto tanpa log',
+                  subtitle: `${new Date(photo.created_at).toLocaleString('id-ID')} · pemicu #${photo.trigger_number}`,
+                })}
+                className="text-left cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                <img
+                  src={photo.image_path}
+                  alt={`Pemicu #${photo.trigger_number}`}
+                  className="w-24 h-18 rounded border object-cover border-amber-500/40"
+                />
+                <div className="text-[10px] font-mono mt-1 text-slate-400">
+                  {new Date(photo.created_at).toLocaleString('id-ID')}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Modal zoom foto */}
-      {zoomPhoto && zoomPhoto.image_path && (
+      {zoomTarget && (
         <ImageZoomModal
-          imageUrl={zoomPhoto.image_path}
-          title={resolveDisplayName(zoomPhoto, personnelList)}
-          subtitle={`${new Date(zoomPhoto.created_at).toLocaleString('id-ID')} · ID finger: ${zoomPhoto.fingerprint_id}`}
-          onClose={() => setZoomPhoto(null)}
+          imageUrl={zoomTarget.imageUrl}
+          title={zoomTarget.title}
+          subtitle={zoomTarget.subtitle}
+          onClose={() => setZoomTarget(null)}
         />
       )}
     </div>

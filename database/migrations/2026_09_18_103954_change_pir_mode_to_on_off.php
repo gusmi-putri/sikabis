@@ -12,6 +12,24 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // MODIFY COLUMN hanya ada di MySQL. Database lain (SQLite untuk tes)
+        // cukup mengganti tipe kolom lewat Schema lalu memetakan nilainya.
+        if (DB::getDriverName() !== 'mysql') {
+            foreach (['device_statuses', 'motion_events', 'pir_mode_logs'] as $table) {
+                Schema::table($table, function (Blueprint $blueprint) use ($table) {
+                    $column = $blueprint->string('pir_mode', 20);
+                    if ($table === 'device_statuses') {
+                        $column->default('OFF');
+                    }
+                    $column->change();
+                });
+                DB::table($table)->where('pir_mode', 'ARMED')->update(['pir_mode' => 'ON']);
+                DB::table($table)->where('pir_mode', 'ACTIVITY')->update(['pir_mode' => 'OFF']);
+            }
+
+            return;
+        }
+
         // device_statuses
         DB::statement("ALTER TABLE device_statuses MODIFY COLUMN pir_mode VARCHAR(20) DEFAULT 'OFF'");
         DB::table('device_statuses')->where('pir_mode', 'ARMED')->update(['pir_mode' => 'ON']);
@@ -36,6 +54,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE device_statuses MODIFY COLUMN pir_mode VARCHAR(20) DEFAULT 'ACTIVITY'");
         DB::table('device_statuses')->where('pir_mode', 'ON')->update(['pir_mode' => 'ARMED']);
         DB::table('device_statuses')->where('pir_mode', 'OFF')->update(['pir_mode' => 'ACTIVITY']);

@@ -28,6 +28,7 @@ import { LiveCameraPanel } from '../components/LiveCameraPanel';
 // Tipe & Data
 import {
   AccessLog,
+  AccessPhoto,
   MotionEvent,
   DeviceStatus,
   Personnel,
@@ -68,6 +69,7 @@ export default function Dashboard() {
 
   // ── Data State ─────────────────────────────────────────────
   const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
+  const [unpairedPhotos, setUnpairedPhotos] = useState<AccessPhoto[]>([]);
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>(EMPTY_DEVICE_STATUS);
   const [personnelList, setPersonnelList] = useState<Personnel[]>([]);
@@ -84,6 +86,7 @@ export default function Dashboard() {
     try {
       const requests: Promise<void>[] = [
         APIService.getAccessLogs().then(setAccessLogs),
+        APIService.getUnpairedAccessPhotos().then(setUnpairedPhotos),
         APIService.getMotionEvents().then(setMotionEvents),
         APIService.getPersonnelList().then(setPersonnelList),
         APIService.getDeviceStatus().then(setDeviceStatus),
@@ -178,6 +181,7 @@ export default function Dashboard() {
     setCurrentUser(null);
     setActiveTab('dashboard');
     setAccessLogs([]);
+    setUnpairedPhotos([]);
     setMotionEvents([]);
     setPersonnelList([]);
     setUsersList([]);
@@ -338,7 +342,7 @@ export default function Dashboard() {
 
           {/* ── ACCESS LOG ─────────────────────────────────── */}
           {activeTab === 'access-log' && (
-            <AccessLogView logs={accessLogs} personnelList={personnelList} />
+            <AccessLogView logs={accessLogs} personnelList={personnelList} unpairedPhotos={unpairedPhotos} />
           )}
 
           {/* ── MOTION LOG ─────────────────────────────────── */}

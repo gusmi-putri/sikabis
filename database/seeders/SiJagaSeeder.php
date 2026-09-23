@@ -129,5 +129,22 @@ class SiJagaSeeder extends Seeder
             'pending_target' => null,
             'pending_since' => null,
         ]);
+
+        // Kotak kunci dua board (firmware_kotak_kunci.ino + firmware_kamera_boardB.ino).
+        // api_key diisi ke SERVER_TOKEN di firmware masing-masing board.
+        DeviceStatus::create([
+            'device_id' => 'kotak-kunci-cam-01',
+            'api_key' => Str::random(40),
+            'status' => 'offline',
+            'pir_mode' => 'OFF',
+        ]);
+
+        DeviceStatus::create([
+            'device_id' => 'kotak-kunci-01',
+            'api_key' => Str::random(40),
+            'status' => 'offline',
+            'pir_mode' => 'OFF',
+            'camera_device_id' => 'kotak-kunci-cam-01',
+        ]);
     }
 }

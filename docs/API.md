@@ -57,7 +57,7 @@ Cabut token Sanctum yang sedang dipakai. Response `204`.
 ## Dashboard — Data Log
 
 ### `GET /access-logs` 🔐
-Riwayat scan fingerprint key box, terbaru duluan. Field `personnel_name` di-resolve dari relasi `fingerprint_id`, bisa `null` kalau fingerprint tidak dikenal (misal upaya akses gagal).
+Riwayat scan fingerprint key box, terbaru duluan. Field `personnel_name` di-resolve dari relasi `fingerprint_id`, bisa `null` kalau fingerprint tidak dikenal (misal upaya akses gagal). Log dari kotak kunci dua board juga membawa `reason`, `confidence`, `failed_streak`, `alarm`, `event_number`, `missing_before`, dan `device_restarted` (lihat `POST /device/keybox/log`).
 
 ### `GET /motion-events` 🔐
 Riwayat deteksi PIR + foto, terbaru duluan.
@@ -198,6 +198,47 @@ Upload foto motion event. `multipart/form-data`, bukan JSON.
 | `photo` | file | wajib, image, maks 5MB |
 
 Response `201`: `{ "id": 42 }`.
+
+### Kotak kunci dua board
+
+Dipakai `firmware_kotak_kunci.ino` (Board A, sidik jari) dan `firmware_kamera_boardB.ino` (Board B, ESP32-CAM). Format mengikuti *Spesifikasi Integrasi ESP32 ke Server*: identitas lewat field `perangkat`, kunci lewat `Authorization: Bearer <api_key>` (header `X-Device-Key` + `device_id` juga diterima).
+
+Daftarkan kedua board dan dapatkan `api_key`-nya dengan:
+
+```bash
+php artisan keybox:register            # default: kotak-kunci-01 + kotak-kunci-cam-01
+```
+
+### `POST /device/keybox/log` 📡
+Satu log per percobaan akses dari Board A. JSON.
+
+```json
+{ "perangkat": "kotak-kunci-01", "nomor_kejadian": 7, "waktu_ms": 123456, "hasil": "cocok",
+  "id_sidik_jari": 1, "keyakinan": 76, "gagal_beruntun": 0, "alarm": false }
+```
+
+- `hasil` = `cocok` → `result: success`; `tidak_cocok` / `tidak_terbaca` / `keyakinan_rendah` → `result: failed` (nilai aslinya disimpan di `reason`). `id_sidik_jari: -1` disimpan sebagai `fingerprint_id: null`.
+- Waktu kejadian memakai jam server (`created_at`); `waktu_ms` hanya disimpan sebagai `device_uptime_ms`.
+- **Idempoten:** kiriman ulang dengan `nomor_kejadian` + `waktu_ms` yang sama dibalas `200` tanpa disimpan dua kali.
+- **Nomor bolong:** `missing_before` = jumlah nomor yang terlewat sejak log sebelumnya; `device_restarted: true` kalau `waktu_ms` mundur atau nomor kembali kecil.
+- **Pemasangan foto:** log mengklaim foto terbaru dari kamera pasangannya (`device_statuses.camera_device_id`) yang belum berpasangan dan tiba ≤ 10 detik sebelumnya. Jendelanya 10 detik, bukan 3, karena log `cocok` baru dikirim setelah solenoid terkunci lagi (5–8 detik).
+
+Response `201`: `{ "ok": true, "id": 42 }` (`200` untuk kiriman ulang).
+
+### `POST /device/keybox/foto` 📡
+Satu foto per percobaan dari Board B. `multipart/form-data`.
+
+| Field | Tipe | Keterangan |
+|---|---|---|
+| `perangkat` | string | wajib, mis. `kotak-kunci-cam-01` |
+| `nomor_pemicu` | integer | wajib |
+| `waktu_ms` | integer | wajib |
+| `foto` | file | wajib, image, maks 5MB |
+
+Response `201`: `{ "ok": true, "id": 9 }`. Foto disimpan di `access_photos` tanpa pasangan dulu; log yang tiba sesudahnya yang mengklaimnya.
+
+### `GET /access-photos/unpaired` 🔐
+Foto kotak kunci yang tidak pernah mendapat pasangan log (lebih tua dari jendela pemasangan), terbaru duluan. Ditampilkan di halaman Access Log sebagai "Foto Tanpa Log".
 
 ---
 

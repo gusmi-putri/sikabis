@@ -4,7 +4,8 @@
  * Kolom: Waktu | Foto | Personel | Status
  *
  * Penting: nama personel di-resolve dari fingerprint_id.
- * Jika fingerprint_id tidak ketemu → tampilkan "Fingerprint #<id>".
+ * Jika fingerprint_id tidak ketemu → tampilkan "Fingerprint #<id>",
+ * jika null (percobaan gagal) → "Tidak dikenal".
  */
 
 import React, { useState } from 'react';
@@ -12,16 +13,11 @@ import { CheckCircle2, XCircle, KeyRound, ImageOff } from 'lucide-react';
 import { AccessLog, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
+import { AccessLogMeta, MissingLogsRow, resolveDisplayName } from './AccessLogDetail';
 
 interface LiveAccessTableProps {
   logs: AccessLog[];
   personnelList: Personnel[];
-}
-
-function resolveDisplayName(log: AccessLog, personnelList: Personnel[]): string {
-  if (log.personnel_name) return log.personnel_name;
-  const found = personnelList.find((p) => p.fingerprint_id === log.fingerprint_id);
-  return found ? found.name : `Fingerprint #${log.fingerprint_id}`;
 }
 
 function timeAgo(isoStr: string): string {
@@ -83,8 +79,8 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                 const isSuccess = log.result === 'success';
                 const displayName = resolveDisplayName(log, personnelList);
                 return (
+                  <React.Fragment key={log.id}>
                   <tr
-                    key={log.id}
                     id={`access-row-${log.id}`}
                     className={`transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-50'}`}
                   >
@@ -125,9 +121,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       <div className={`text-xs font-medium ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                         {displayName}
                       </div>
-                      <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        ID finger: {log.fingerprint_id} · {log.device_id}
-                      </div>
+                      <AccessLogMeta log={log} isDark={isDark} />
                     </td>
 
                     {/* Status */}
@@ -151,6 +145,8 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                       )}
                     </td>
                   </tr>
+                  <MissingLogsRow log={log} colSpan={4} isDark={isDark} />
+                  </React.Fragment>
                 );
               })
             )}
@@ -163,7 +159,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
         <ImageZoomModal
           imageUrl={zoomPhoto.image_path}
           title={resolveDisplayName(zoomPhoto, personnelList)}
-          subtitle={`${new Date(zoomPhoto.created_at).toLocaleString('id-ID')} · ID finger: ${zoomPhoto.fingerprint_id}`}
+          subtitle={`${new Date(zoomPhoto.created_at).toLocaleString('id-ID')} · ID finger: ${zoomPhoto.fingerprint_id ?? '-'}`}
           onClose={() => setZoomPhoto(null)}
         />
       )}
