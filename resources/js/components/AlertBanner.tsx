@@ -6,28 +6,38 @@
  */
 
 import React from 'react';
-import { AlertTriangle, X, ArrowRight } from 'lucide-react';
+import { AlertTriangle, X, ArrowRight, Fingerprint } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { MotionEvent } from '../types';
+import { MotionEvent, AccessLog } from '../types';
 
 interface AlertBannerProps {
   isVisible: boolean;
+  alertType: 'motion' | 'fingerprint' | null;
   latestEvent: MotionEvent | null;
+  latestAccess: AccessLog | null;
   onDismiss: () => void;
-  onViewMotionLog: () => void;
+  onViewLog: () => void;
 }
 
 export const AlertBanner: React.FC<AlertBannerProps> = ({
   isVisible,
+  alertType,
   latestEvent,
+  latestAccess,
   onDismiss,
-  onViewMotionLog,
+  onViewLog,
 }) => {
   const { isDark } = useTheme();
 
-  if (!isVisible || !latestEvent) return null;
+  if (!isVisible || !alertType) return null;
 
-  const timeStr = new Date(latestEvent.created_at).toLocaleTimeString('id-ID', {
+  const targetDate = alertType === 'motion' 
+    ? latestEvent?.created_at 
+    : latestAccess?.created_at;
+
+  if (!targetDate) return null;
+
+  const timeStr = new Date(targetDate).toLocaleTimeString('id-ID', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -46,14 +56,17 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
         <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 animate-pulse" />
         <span className="font-bold text-red-500 shrink-0">PERINGATAN</span>
         <span className={`truncate ${isDark ? 'text-red-300' : 'text-red-700'}`}>
-          Gerakan terdeteksi saat sensor PIR nyala — {timeStr} WIB
+          {alertType === 'motion'
+            ? `Gerakan terdeteksi saat sensor PIR nyala — ${timeStr} WIB`
+            : `Sidik jari gagal beruntun (Alarm Kotak Kunci Menyala!) — ${timeStr} WIB`
+          }
         </span>
       </div>
 
       {/* Kanan: aksi */}
       <div className="flex items-center gap-2 shrink-0">
         <button
-          onClick={onViewMotionLog}
+          onClick={onViewLog}
           className={`flex items-center gap-1 px-2.5 py-1 rounded border text-[11px] font-semibold cursor-pointer transition-colors ${
             isDark
               ? 'bg-red-600 hover:bg-red-500 border-red-500 text-white'

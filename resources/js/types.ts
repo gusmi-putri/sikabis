@@ -84,6 +84,7 @@ export interface DeviceStatus {
   stream_url: string | null;        // URL MJPEG live stream, dilaporkan device sendiri via heartbeat
   last_seen: string;                // ISO 8601 string
   auto_arm_at: string | null;
+  enroll_message?: string | null;   // Panduan langkah enroll/delete sidik jari, khusus kotak kunci
 }
 
 // ---- Model: personnel ----

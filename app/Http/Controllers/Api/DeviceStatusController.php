@@ -71,4 +71,50 @@ class DeviceStatusController extends Controller
             PirModeLog::latest()->limit(100)->get()
         );
     }
+
+    /**
+     * Status online/offline kotak kunci (Board A) dan kameranya (Board B).
+     * Sama seperti show(), device dianggap offline kalau tidak lapor
+     * (log/foto) selama lebih dari OFFLINE_THRESHOLD_SECONDS.
+     */
+    public function keyboxStatus()
+    {
+        $devices = DeviceStatus::whereIn('device_id', ['kotak-kunci-01', 'kotak-kunci-cam-01'])->get();
+
+        foreach ($devices as $device) {
+            if ($device->status === 'online' && (! $device->last_seen || $device->last_seen->lt(now()->subSeconds(self::OFFLINE_THRESHOLD_SECONDS)))) {
+                $device->update(['status' => 'offline']);
+            }
+        }
+
+        return DeviceStatusResource::collection($devices);
+    }
+
+    /**
+     * Kirim perintah dari dashboard ke kotak kunci (Board A): mute alarm
+     * atau paksa kunci. Diambil Board A lewat polling GET /device/keybox/command.
+     * TIDAK ADA perintah buka solenoid dari jarak jauh -- itu keputusan
+     * keamanan yang disengaja, bukan keterbatasan teknis.
+     */
+    public function sendKeyboxCommand(Request $request)
+    {
+        $data = $request->validate([
+            'command' => ['required', 'in:MUTE_ALARM,FORCE_LOCK,TEST_BUZZER,TEST_TRIGGER,RESET_SENSOR,ENROLL'],
+            'target' => ['required_if:command,ENROLL', 'integer', 'min:1', 'max:127'],
+        ]);
+
+        $device = DeviceStatus::where('device_id', 'kotak-kunci-01')->first();
+
+        if ($device) {
+            $device->update([
+                'keybox_command' => $data['command'],
+                'keybox_command_at' => now(),
+                'keybox_command_target' => $data['command'] === 'ENROLL' ? $data['target'] : null,
+                'keybox_enroll_message' => $data['command'] === 'ENROLL' ? 'Menunggu Board A menerima perintah...' : null,
+                'keybox_enroll_message_at' => $data['command'] === 'ENROLL' ? now() : null,
+            ]);
+        }
+
+        return response()->json(null, 204);
+    }
 }

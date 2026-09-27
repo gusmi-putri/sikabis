@@ -8,7 +8,6 @@
 import React, { useState } from 'react';
 import { Radio, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
 import { MotionEvent } from '../types';
-import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
 import { LiveCameraPanel } from './LiveCameraPanel';
 
@@ -21,17 +20,27 @@ interface MotionLogViewProps {
 }
 
 export const MotionLogView: React.FC<MotionLogViewProps> = ({ events, deviceStatus, onToggleFlash }) => {
-  const { isDark } = useTheme();
   const [filterMode, setFilterMode] = useState<string>('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomEvent, setZoomEvent] = useState<MotionEvent | null>(null);
 
+  const resetToFirstPage = () => setCurrentPage(1);
   const itemsPerPage = 10;
 
   // Filter events
   const filteredEvents = events.filter((e) => {
-    if (filterMode === 'ALL') return true;
-    return e.pir_mode === filterMode;
+    if (filterMode !== 'ALL' && e.pir_mode !== filterMode) return false;
+
+    if (dateFrom || dateTo) {
+      const d = new Date(e.created_at);
+      const eventDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (dateFrom && eventDate < dateFrom) return false;
+      if (dateTo && eventDate > dateTo) return false;
+    }
+
+    return true;
   });
 
   // Pagination
@@ -68,16 +77,13 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({ events, deviceStat
           </div>
         </div>
 
-        {/* Filter Mode */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono font-semibold text-slate-400">
-            Filter Mode:
-          </span>
+        {/* Filter */}
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={filterMode}
             onChange={(e) => {
               setFilterMode(e.target.value);
-              setCurrentPage(1);
+              resetToFirstPage();
             }}
             className="px-3 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
           >
@@ -85,6 +91,44 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({ events, deviceStat
             <option value="ON">Saat Sensor Nyala</option>
             <option value="OFF">Saat Sensor Mati</option>
           </select>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                resetToFirstPage();
+              }}
+              title="Dari tanggal"
+              className="px-2 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
+            />
+            <span className="text-xs text-slate-500">–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                resetToFirstPage();
+              }}
+              title="Sampai tanggal"
+              className="px-2 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
+            />
+          </div>
+
+          {(filterMode !== 'ALL' || dateFrom || dateTo) && (
+            <button
+              onClick={() => {
+                setFilterMode('ALL');
+                setDateFrom('');
+                setDateTo('');
+                resetToFirstPage();
+              }}
+              className="text-[11px] font-mono px-2 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors whitespace-nowrap"
+            >
+              Reset Filter
+            </button>
+          )}
         </div>
       </div>
 

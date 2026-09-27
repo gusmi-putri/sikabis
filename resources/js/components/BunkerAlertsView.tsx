@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import { 
-  AlertOctagon, 
   Radio, 
   ShieldAlert, 
   MapPin, 
   Video, 
-  Zap, 
-  Flame, 
   Activity,
   CheckCircle2,
-  RefreshCw,
-  Eye,
   Camera,
   Maximize2,
   X,
@@ -18,16 +13,20 @@ import {
   Sliders,
   Cpu,
   Clock,
-  Download,
   FileText,
-  AlertTriangle,
-  Layers,
   Thermometer,
-  Sparkles,
   Wifi
 } from 'lucide-react';
-import { BunkerSensor, BunkerIntrusionLog } from '../types';
-import { INITIAL_BUNKER_SENSORS } from '../data/mockData';
+export interface BunkerIntrusionLog {
+  id: string;
+  waktu: string;
+  zona: string;
+  sensor: string;
+  status: 'TERDETEKSI' | 'TERVERIFIKASI' | 'TERSELESAIKAN' | string;
+  fotoDokumentasi: string;
+  keterangan: string;
+  levelSinyal: string;
+}
 import { useTheme } from '../context/ThemeContext';
 
 interface BunkerAlertsViewProps {
@@ -46,7 +45,6 @@ export const BunkerAlertsView: React.FC<BunkerAlertsViewProps> = ({
   onUpdateIntrusionLogs
 }) => {
   const { isDark } = useTheme();
-  const [sensors] = useState<BunkerSensor[]>(INITIAL_BUNKER_SENSORS);
   const [activeSubTab, setActiveSubTab] = useState<'log-intrusi' | 'peta-taktis' | 'kamera-esp32'>('log-intrusi');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedPhoto, setSelectedPhoto] = useState<BunkerIntrusionLog | null>(null);

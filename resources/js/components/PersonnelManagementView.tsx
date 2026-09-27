@@ -15,6 +15,7 @@ import { apiErrorMessage } from '../services/api';
 
 interface PersonnelManagementViewProps {
   personnelList: Personnel[];
+  keyboxStatus: DeviceStatus[];
   onCreate: (data: PersonnelInput) => Promise<void>;
   onDeactivate: (id: number) => Promise<void>;
   onUpdate: (id: number, data: PersonnelInput) => Promise<void>;
@@ -22,6 +23,7 @@ interface PersonnelManagementViewProps {
 
 export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = ({
   personnelList,
+  keyboxStatus,
   onCreate,
   onDeactivate,
   onUpdate,
@@ -101,6 +103,7 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
         <div className="xl:col-span-1">
           <PersonnelRegistrationCard
             personnelList={personnelList}
+            keyboxStatus={keyboxStatus}
             onCreate={onCreate}
           />
         </div>
@@ -208,8 +211,8 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
               ID sidik jarinya dilepas dan riwayat aksesnya tetap tersimpan.
             </p>
             <div className={`p-3 rounded border text-xs font-mono mb-5 leading-relaxed ${isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              <span className="font-bold">Wajib:</span> hapus juga template ID <span className="font-bold">#{personToRevoke.fingerprint_id}</span> di sensor Board A.
-              Selama template masih tersimpan, jari ini tetap bisa membuka kotak kunci.
+              <span className="font-bold">Info:</span> Template ID <span className="font-bold">#{personToRevoke.fingerprint_id}</span> akan otomatis dihapus dari sensor Board A.
+              Kotak kunci akan menerima perintah hapus dalam maksimal 5 detik.
             </div>
 
             <div className="flex gap-3 justify-end">

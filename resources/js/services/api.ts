@@ -118,6 +118,35 @@ export const APIService = {
     return response.data.data || response.data;
   },
 
+  /**
+   * Status online/offline kotak kunci (Board A) dan kameranya (Board B).
+   */
+  getKeyboxStatus: async (): Promise<DeviceStatus[]> => {
+    const response = await api.get('/keybox-status');
+    return response.data.data || response.data;
+  },
+
+  /**
+   * Kirim perintah ke kotak kunci (Board A): mute alarm atau paksa kunci.
+   * TIDAK ADA perintah buka solenoid dari jarak jauh, itu keputusan
+   * keamanan yang disengaja.
+   */
+  sendKeyboxCommand: async (
+    command: 'MUTE_ALARM' | 'FORCE_LOCK' | 'TEST_BUZZER' | 'TEST_TRIGGER' | 'RESET_SENSOR'
+  ): Promise<void> => {
+    await api.post('/keybox/command', { command });
+  },
+
+  /**
+   * Mulai mode daftar sidik jari baru di Board A untuk ID tertentu.
+   * Device tetap butuh sentuhan fisik dua kali ke sensor untuk
+   * menyelesaikannya -- ini cuma menghilangkan keharusan buka Serial
+   * Monitor untuk mengetik nomor ID-nya.
+   */
+  enrollFingerprint: async (id: number): Promise<void> => {
+    await api.post('/keybox/command', { command: 'ENROLL', target: id });
+  },
+
   setPIRMode: async (mode: PIRMode, duration_minutes?: number): Promise<void> => {
     await api.post('/device/pir-mode', { mode, duration_minutes });
   },

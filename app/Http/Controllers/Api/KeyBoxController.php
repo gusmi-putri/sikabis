@@ -106,8 +106,20 @@ class KeyBoxController extends Controller
     }
 
     /**
-     * Terima satu foto dari Board B. Foto disimpan tanpa pasangan dulu;
-     * log dari Board A yang tiba sesudahnya yang akan mengklaimnya.
+     * Terima satu foto dari Board B.
+     *
+     * Untuk PERCOBAAN COCOK, log dari Board A tiba belakangan (ditahan
+     * sampai solenoid terkunci lagi, 5-8 detik) -- foto disimpan tanpa
+     * pasangan dulu, nanti diklaim oleh findPhotoFor() saat log tiba.
+     *
+     * Untuk PERCOBAAN GAGAL, urutannya TERBALIK: Board A tidak menahan
+     * apa pun (solenoid tidak pernah terbuka), jadi lognya sudah lebih
+     * dulu sampai di server, sementara fotonya baru menyusul beberapa
+     * detik kemudian (menunggu esp_camera + koneksi HTTPS). Tanpa
+     * pemasangan mundur di sini, foto percobaan gagal selamanya jadi
+     * yatim -- padahal itu justru bukti yang paling penting untuk
+     * dicatat (lihat komentar di Board A: "gembok lama tidak
+     * meninggalkan jejak siapa pun yang mencoba").
      */
     public function photo(Request $request): JsonResponse
     {
@@ -121,16 +133,86 @@ class KeyBoxController extends Controller
         $device = $request->attributes->get('device');
         $path = $request->file('foto')->store('access-photos', 'public');
 
-        $photo = AccessPhoto::create([
-            'device_id' => $device->device_id,
-            'trigger_number' => $data['nomor_pemicu'],
-            'device_uptime_ms' => $data['waktu_ms'],
-            'image_path' => Storage::disk('public')->url($path),
-        ]);
+        $photo = DB::transaction(function () use ($data, $device, $path) {
+            $photo = AccessPhoto::create([
+                'device_id' => $device->device_id,
+                'trigger_number' => $data['nomor_pemicu'],
+                'device_uptime_ms' => $data['waktu_ms'],
+                'image_path' => Storage::disk('public')->url($path),
+            ]);
+
+            $fingerprintBoard = DeviceStatus::where('camera_device_id', $device->device_id)->first();
+
+            if ($fingerprintBoard) {
+                $orphanLog = AccessLog::where('device_id', $fingerprintBoard->device_id)
+                    ->whereNull('image_path')
+                    ->where('created_at', '>=', now()->subSeconds(self::PAIRING_WINDOW_SECONDS))
+                    ->latest('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($orphanLog) {
+                    $orphanLog->update(['image_path' => $photo->image_path]);
+                    $photo->update(['access_log_id' => $orphanLog->id]);
+                }
+            }
+
+            return $photo;
+        });
 
         $device->update(['status' => 'online', 'last_seen' => now()]);
 
         return response()->json(['ok' => true, 'id' => $photo->id], 201);
+    }
+
+    /**
+     * Dipoll berkala oleh Board A untuk menerima perintah dari dashboard
+     * web (mute alarm / paksa kunci). SENGAJA tidak ada perintah untuk
+     * membuka solenoid dari jarak jauh -- itu tetap hanya bisa dipicu
+     * fisik oleh sidik jari yang cocok, demi keamanan.
+     *
+     * Sekali diambil, perintah langsung direset ke NONE (fire-and-forget,
+     * tidak ada acknowledgement karena kedua aksi aman diulang).
+     */
+    public function command(Request $request): JsonResponse
+    {
+        /** @var DeviceStatus $device */
+        $device = $request->attributes->get('device');
+
+        $command = $device->keybox_command;
+        $target = $device->keybox_command_target;
+
+        if ($command !== 'NONE') {
+            $device->update(['keybox_command' => 'NONE', 'keybox_command_at' => null, 'keybox_command_target' => null]);
+        }
+
+        $device->update(['status' => 'online', 'last_seen' => now()]);
+
+        return response()->json(['command' => $command, 'target' => $target]);
+    }
+
+    /**
+     * Dipanggil Board A di tiap tahap proses enroll/delete sidik jari
+     * ("Tempelkan jari", "Angkat jari...", "Berhasil disimpan", dst).
+     * Operator melihat pesan ini live di dashboard web, jadi tidak perlu
+     * buka Serial Monitor untuk tahu kapan harus menyentuh sensor.
+     */
+    public function enrollStatus(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'message' => ['required', 'string', 'max:255'],
+        ]);
+
+        /** @var DeviceStatus $device */
+        $device = $request->attributes->get('device');
+        $device->update([
+            'keybox_enroll_message' => $data['message'],
+            'keybox_enroll_message_at' => now(),
+            'status' => 'online',
+            'last_seen' => now(),
+        ]);
+
+        return response()->json(null, 204);
     }
 
     /**

@@ -26,8 +26,13 @@ interface ZoomTarget {
 export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelList, unpairedPhotos }) => {
   const { isDark } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'success' | 'failed'>('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
+
+  const resetToFirstPage = () => setCurrentPage(1);
 
   const openLogPhoto = (log: AccessLog) => {
     if (!log.image_path) return;
@@ -45,7 +50,21 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
     const name = resolveDisplayName(log, personnelList).toLowerCase();
     const idStr = log.fingerprint_id?.toString() ?? '';
     const search = searchTerm.toLowerCase();
-    return name.includes(search) || idStr.includes(search);
+    if (search && !name.includes(search) && !idStr.includes(search)) return false;
+
+    if (statusFilter !== 'ALL' && log.result !== statusFilter) return false;
+
+    // Dibandingkan berdasarkan tanggal LOKAL (WIB), bukan tanggal ISO
+    // mentah -- supaya kejadian jam 00:xx WIB tidak salah masuk ke
+    // tanggal sebelumnya kalau server menyimpan waktu dalam UTC.
+    if (dateFrom || dateTo) {
+      const d = new Date(log.created_at);
+      const logDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (dateFrom && logDate < dateFrom) return false;
+      if (dateTo && logDate > dateTo) return false;
+    }
+
+    return true;
   });
 
   // Pagination
@@ -73,19 +92,73 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari nama atau ID finger..."
-            value={searchTerm}
+        {/* Search & Filter */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari nama atau ID finger..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                resetToFirstPage();
+              }}
+              className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-colors bg-black/20 border-white/10 text-slate-200 placeholder:text-slate-500"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
             onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
+              setStatusFilter(e.target.value as typeof statusFilter);
+              resetToFirstPage();
             }}
-            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-colors bg-black/20 border-white/10 text-slate-200 placeholder:text-slate-500"
-          />
+            className="px-3 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
+          >
+            <option value="ALL">Semua Status</option>
+            <option value="success">Berhasil</option>
+            <option value="failed">Gagal</option>
+          </select>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                resetToFirstPage();
+              }}
+              title="Dari tanggal"
+              className="px-2 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
+            />
+            <span className="text-xs text-slate-500">–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                resetToFirstPage();
+              }}
+              title="Sampai tanggal"
+              className="px-2 py-2 rounded-lg border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-colors bg-black/20 border-white/10 text-slate-200"
+            />
+          </div>
+
+          {(searchTerm || statusFilter !== 'ALL' || dateFrom || dateTo) && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setStatusFilter('ALL');
+                setDateFrom('');
+                setDateTo('');
+                resetToFirstPage();
+              }}
+              className="text-[11px] font-mono px-2 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors whitespace-nowrap"
+            >
+              Reset Filter
+            </button>
+          )}
         </div>
       </div>
 

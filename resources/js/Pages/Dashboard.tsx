@@ -24,6 +24,7 @@ import { PersonnelManagementView } from '../components/PersonnelManagementView';
 import { UserManagementView } from '../components/UserManagementView';
 import { PirModeLogPanel } from '../components/PirModeLogPanel';
 import { LiveCameraPanel } from '../components/LiveCameraPanel';
+import { DeviceStatusPanel, KeyboxCommand } from '../components/DeviceStatusPanel';
 
 // Tipe & Data
 import {
@@ -47,6 +48,7 @@ const EMPTY_DEVICE_STATUS: DeviceStatus = {
   flash_on: false,
   stream_url: null,
   last_seen: new Date(0).toISOString(),
+  auto_arm_at: null,
 };
 
 export default function Dashboard() {
@@ -70,6 +72,7 @@ export default function Dashboard() {
   const [unpairedPhotos, setUnpairedPhotos] = useState<AccessPhoto[]>([]);
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([]);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>(EMPTY_DEVICE_STATUS);
+  const [keyboxStatus, setKeyboxStatus] = useState<DeviceStatus[]>([]);
   const [personnelList, setPersonnelList] = useState<Personnel[]>([]);
   const [pirModeLogs, setPirModeLogs] = useState<PirModeLog[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -88,6 +91,7 @@ export default function Dashboard() {
         APIService.getMotionEvents().then(setMotionEvents),
         APIService.getPersonnelList().then(setPersonnelList),
         APIService.getDeviceStatus().then(setDeviceStatus),
+        APIService.getKeyboxStatus().then(setKeyboxStatus),
         APIService.getPirModeLogs().then(setPirModeLogs),
       ];
       if (user.role === 'admin_pam') {
@@ -132,14 +136,38 @@ export default function Dashboard() {
     ).length,
   };
 
-  // ── Ada motion event baru saat ARMED? (untuk AlertBanner) ──
+  // ── Ada motion event baru saat ARMED? atau Alarm Fingerprint? (untuk AlertBanner) ──
   const latestMotion = motionEvents[0] ?? null;
-  const hasActiveAlert =
+  const hasMotionAlert =
     latestMotion !== null &&
     latestMotion.pir_mode === 'ON' &&
     now - new Date(latestMotion.created_at).getTime() < 10 * 60 * 1000; // 10 menit terakhir
+
+  const latestFailedAccess = accessLogs.find(l => l.alarm) ?? null;
+  const hasFingerprintAlert = 
+    latestFailedAccess !== null &&
+    now - new Date(latestFailedAccess.created_at).getTime() < 10 * 60 * 1000;
+
   const [alertDismissed, setAlertDismissed] = useState(false);
-  const showAlert = hasActiveAlert && !alertDismissed;
+  
+  let activeAlertType: 'motion' | 'fingerprint' | null = null;
+  if (!alertDismissed) {
+    if (hasFingerprintAlert && hasMotionAlert) {
+      // Prioritaskan yang paling baru
+      activeAlertType = new Date(latestFailedAccess!.created_at).getTime() > new Date(latestMotion!.created_at).getTime()
+        ? 'fingerprint'
+        : 'motion';
+    } else if (hasFingerprintAlert) {
+      activeAlertType = 'fingerprint';
+    } else if (hasMotionAlert) {
+      activeAlertType = 'motion';
+    }
+  }
+
+  const showAlert = activeAlertType !== null;
+
+  // ── Kamera kotak kunci (Board B), dipakai panel live feed-nya ──
+  const keyboxCam = keyboxStatus.find((d) => d.device_id === 'kotak-kunci-cam-01') ?? null;
 
   // ── Aksi: Ubah mode PIR ────────────────────────────────────
   const handleSetPIRMode = async (mode: PIRMode, durationMinutes?: number) => {
@@ -169,6 +197,17 @@ export default function Dashboard() {
     }
   };
 
+  // ── Aksi: Kirim perintah ke kotak kunci (mute alarm / paksa kunci) ──
+  const handleKeyboxCommand = async (command: KeyboxCommand) => {
+    try {
+      await APIService.sendKeyboxCommand(command);
+    } catch (err) {
+      // Diam-diam gagal; device akan tetap kelihatan online/offline apa adanya.
+    }
+  };
+
+  // Fungsi enroll jari dihapus (sudah otomatis lewat form Manajemen Personel)
+
   // ── Aksi: Logout ───────────────────────────────────────────
   const handleLogout = async () => {
     try {
@@ -185,6 +224,7 @@ export default function Dashboard() {
     setUsersList([]);
     setPirModeLogs([]);
     setDeviceStatus(EMPTY_DEVICE_STATUS);
+    setKeyboxStatus([]);
   };
 
   // ── Aksi: Catat personel yang sidik jarinya sudah didaftarkan di Board A ──
@@ -300,24 +340,39 @@ export default function Dashboard() {
             <div className="space-y-5">
               <AlertBanner
                 isVisible={showAlert}
+                alertType={activeAlertType}
                 latestEvent={latestMotion}
+                latestAccess={latestFailedAccess}
                 onDismiss={() => setAlertDismissed(true)}
-                onViewMotionLog={() => {
+                onViewLog={() => {
                   setAlertDismissed(true);
-                  setActiveTab('motion-log');
+                  setActiveTab(activeAlertType === 'motion' ? 'motion-log' : 'access-log');
                 }}
               />
               <StatCards stats={stats} />
-              <PIRControlPanel
-                deviceStatus={deviceStatus}
-                onSetMode={handleSetPIRMode}
-              />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                <PIRControlPanel
+                  deviceStatus={deviceStatus}
+                  onSetMode={handleSetPIRMode}
+                />
+                <DeviceStatusPanel
+                  title="Status Kotak Kunci"
+                  description="Sidik jari (Board A) + kameranya (Board B)"
+                  devices={keyboxStatus}
+                  onKeyboxCommand={handleKeyboxCommand}
+                />
+              </div>
               <LiveCameraPanel
                 deviceId={deviceStatus.device_id}
                 status={deviceStatus.status}
                 streamUrl={deviceStatus.stream_url}
                 flashOn={deviceStatus.flash_on}
                 onToggleFlash={handleToggleFlash}
+              />
+              <LiveCameraPanel
+                deviceId={keyboxCam?.device_id ?? 'kotak-kunci-cam-01'}
+                status={keyboxCam?.status ?? 'offline'}
+                streamUrl={keyboxCam?.stream_url ?? null}
               />
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <LiveAccessTable
@@ -350,6 +405,7 @@ export default function Dashboard() {
           {activeTab === 'manajemen-akses' && currentUser.role === 'admin_pam' && (
             <PersonnelManagementView
               personnelList={personnelList}
+              keyboxStatus={keyboxStatus}
               onCreate={handleCreatePersonnel}
               onDeactivate={handleDeactivatePersonnel}
               onUpdate={handleUpdatePersonnel}

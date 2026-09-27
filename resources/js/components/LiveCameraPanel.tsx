@@ -5,7 +5,7 @@
  * tetap akurat walau IP berubah karena DHCP.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Camera, Settings2, RefreshCw, WifiOff, Zap, ZapOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceOnlineStatus } from '../types';
@@ -14,8 +14,11 @@ interface LiveCameraPanelProps {
   deviceId: string;
   status: DeviceOnlineStatus;
   streamUrl: string | null;
-  flashOn: boolean;
-  onToggleFlash: (on: boolean) => Promise<void>;
+  // Opsional -- kamera yang tidak punya LED flash (mis. kamera kotak
+  // kunci, Board B) cukup tidak mengisi keduanya, panelnya otomatis
+  // menyembunyikan kontrol flash.
+  flashOn?: boolean;
+  onToggleFlash?: (on: boolean) => Promise<void>;
 }
 
 export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
@@ -38,6 +41,7 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
   const isOnline = status === 'online';
 
   const handleToggleFlash = async () => {
+    if (!onToggleFlash) return;
     setIsTogglingFlash(true);
     try {
       await onToggleFlash(!flashOn);
@@ -73,13 +77,7 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
             {isStreamActive ? (
               displayUrl && !imageFailed ? (
                 <img
-                  ref={(node) => {
-                    // Abort stream when node is being unmounted
-                    if (node === null && imgRef.current) {
-                      imgRef.current.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-                    }
-                    imgRef.current = node;
-                  }}
+                  ref={imgRef}
                   key={displayUrl}
                   src={displayUrl}
                   alt="Live Stream"
@@ -142,23 +140,25 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
             </span>
           </div>
 
-          {/* Kontrol Flash */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
-            <h4 className={`text-xs font-semibold mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Kontrol Perangkat</h4>
-            <button
-              onClick={handleToggleFlash}
-              disabled={!isOnline || isTogglingFlash}
-              title="Perintah dikirim ke ESP32 lewat polling /device/command (maks. 10 detik)"
-              className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                flashOn
-                  ? isDark ? 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 shadow-[0_0_15px_rgba(251,191,36,0.4)]' : 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 shadow-sm'
-                  : isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600'
-              }`}
-            >
-              {flashOn ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-              {isTogglingFlash ? 'Mengirim...' : flashOn ? 'Flash Menyala' : 'Nyalakan Flash'}
-            </button>
-          </div>
+          {/* Kontrol Flash -- disembunyikan kalau kamera ini tidak punya LED flash */}
+          {onToggleFlash && (
+            <div className={`p-3 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+              <h4 className={`text-xs font-semibold mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Kontrol Perangkat</h4>
+              <button
+                onClick={handleToggleFlash}
+                disabled={!isOnline || isTogglingFlash}
+                title="Perintah dikirim ke ESP32 lewat polling /device/command (maks. 10 detik)"
+                className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                  flashOn
+                    ? isDark ? 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 shadow-[0_0_15px_rgba(251,191,36,0.4)]' : 'bg-amber-400 hover:bg-amber-500 border-amber-500 text-amber-950 shadow-sm'
+                    : isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600'
+                }`}
+              >
+                {flashOn ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
+                {isTogglingFlash ? 'Mengirim...' : flashOn ? 'Flash Menyala' : 'Nyalakan Flash'}
+              </button>
+            </div>
+          )}
 
           {/* Stream Settings */}
           <div className={`p-3 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>

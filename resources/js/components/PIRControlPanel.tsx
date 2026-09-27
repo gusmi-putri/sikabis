@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, ShieldOff, Wifi, WifiOff, Clock, Radio, Timer } from 'lucide-react';
+import { Shield, ShieldOff, Radio, Timer, Wifi, WifiOff, Clock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceStatus, PIRMode } from '../types';
 
@@ -27,11 +27,13 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
   const isOnline = deviceStatus.status === 'online';
   const isArmed = deviceStatus.pir_mode === 'ON';
 
-  const lastSeenStr = new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const lastSeenStr = deviceStatus.last_seen
+    ? new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null;
 
   // Countdown timer effect
   useEffect(() => {
@@ -97,7 +99,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
           <span className="font-semibold">{deviceStatus.device_id}</span>
           <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>•</span>
           <span>{isOnline ? 'Online' : 'Offline'}</span>
-          {isOnline && (
+          {isOnline && lastSeenStr && (
             <>
               <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>•</span>
               <Clock className="w-3 h-3" />

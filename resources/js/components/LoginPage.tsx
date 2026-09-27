@@ -7,7 +7,6 @@
 
 import React, { useState } from 'react';
 import { Shield, Lock, User as UserIcon, Eye, EyeOff, LogIn, AlertTriangle } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
 import { User } from '../types';
 import { APIService } from '../services/api';
 
@@ -16,7 +15,6 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
-  const { isDark } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

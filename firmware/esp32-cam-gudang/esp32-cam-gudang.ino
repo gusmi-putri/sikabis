@@ -36,7 +36,7 @@
  * ===========================================================
  * KENAPA FILE INI BERBEDA DARI VERSI AWAL:
  * Versi awal HANYA mengirim foto ke Telegram dan menyimpan stream
- * lokal — tidak pernah memberi tahu backend Laravel, sehingga:
+ * lokal â€” tidak pernah memberi tahu backend Laravel, sehingga:
  *   - Motion event tidak pernah muncul di dashboard web (tabel
  *     motion_events tetap kosong/basi).
  *   - Status perangkat (online/offline, last_seen) di dashboard

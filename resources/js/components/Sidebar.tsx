@@ -9,7 +9,7 @@
 import React from 'react';
 import { Activity, KeyRound, Radio, Users, Shield, UserCog } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { NavTab } from '../App';
+import { NavTab } from '../Pages/Dashboard';
 import { UserRole } from '../types';
 
 interface SidebarProps {
@@ -64,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userR
         <p className={`text-[10px] font-mono uppercase tracking-widest px-2 py-2 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
           Menu
         </p>
-        {menuItems.map(({ id, label, icon: Icon, ringColor }) => {
+        {menuItems.map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;
           return (
             <button

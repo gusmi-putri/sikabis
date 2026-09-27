@@ -30,8 +30,18 @@ html.light h1.text-white,
 html.light h2.text-white, 
 html.light h3.text-white, 
 html.light h4.text-white,
-html.light label {
+html.light label,
+html.light input.text-white,
+html.light button.text-white {
   color: #0f172a !important;
+}
+
+html.light button.border-white {
+  border-color: #0f172a !important;
+}
+html.light button.hover\:bg-white:hover {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
 }
 
 html.light .text-slate-400 { color: #64748b !important; }

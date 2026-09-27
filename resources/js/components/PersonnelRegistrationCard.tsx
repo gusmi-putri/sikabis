@@ -7,28 +7,58 @@
  * bisa diperintah dari jaringan.
  */
 
-import React, { useState } from 'react';
-import { UserPlus, Fingerprint, Save, AlertTriangle } from 'lucide-react';
-import { Personnel, PersonnelInput } from '../types';
+import React, { useState, useEffect } from 'react';
+import { UserPlus, Fingerprint, Save, AlertTriangle, Loader2 } from 'lucide-react';
+import { Personnel, PersonnelInput, DeviceStatus } from '../types';
+import { APIService } from '../services/api';
 import { apiErrorMessage } from '../services/api';
 
 interface PersonnelRegistrationCardProps {
   personnelList: Personnel[];
+  keyboxStatus: DeviceStatus[];
   onCreate: (data: PersonnelInput) => Promise<void>;
 }
 
-const EMPTY_FORM = { name: '', rank_nrp: '', fingerprint_id: '', notes: '' };
+const EMPTY_FORM = { name: '', rank_nrp: '', notes: '' };
 
 export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps> = ({
   personnelList,
+  keyboxStatus,
   onCreate,
 }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveMessage, setLiveMessage] = useState<string | null>(null);
 
-  const usedIds = new Set(personnelList.map((p) => p.fingerprint_id).filter((id): id is number => id !== null));
-  const nextFreeId = Array.from({ length: 127 }, (_, i) => i + 1).find((id) => !usedIds.has(id));
+  const boardA = keyboxStatus.find((d) => d.device_id === 'kotak-kunci-01') ?? null;
+  
+  useEffect(() => {
+    if (boardA?.enroll_message) {
+      setLiveMessage(boardA.enroll_message);
+    }
+  }, [boardA?.enroll_message]);
+
+  const enrollMessage = liveMessage || boardA?.enroll_message;
+  const isEnrolling = enrollMessage && !enrollMessage.startsWith('Berhasil') && !enrollMessage.startsWith('Gagal');
+
+  useEffect(() => {
+    if (!isEnrolling) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const statuses = await APIService.getKeyboxStatus();
+        const a = statuses.find(s => s.device_id === 'kotak-kunci-01');
+        if (a?.enroll_message) {
+          setLiveMessage(a.enroll_message);
+        }
+      } catch (err) {
+        // Abaikan error jaringan saat polling
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isEnrolling]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +68,6 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
       await onCreate({
         name: formData.name,
         rank_nrp: formData.rank_nrp || undefined,
-        fingerprint_id: Number(formData.fingerprint_id),
         notes: formData.notes || undefined,
       });
       setFormData(EMPTY_FORM);
@@ -68,18 +97,40 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
       </div>
 
       <div className="p-5">
-        <div className="mb-5 p-3 rounded-lg border flex gap-3 bg-white/5 border-white/10">
-          <Fingerprint className="w-5 h-5 shrink-0 text-emerald-500" />
-          <ol className="text-[10px] font-mono leading-relaxed text-slate-400 list-decimal pl-3 space-y-0.5">
-            <li>Buka Serial Monitor Board A, kirim <span className="text-emerald-400">D</span>.</li>
-            <li>
-              Ketik nomor ID
-              {nextFreeId && <> (kosong: <span className="text-emerald-400">{nextFreeId}</span>)</>}
-              , lalu tempel jari yang sama dua kali.
-            </li>
-            <li>Setelah muncul "Tersimpan sebagai ID …", isi form ini dengan nomor yang sama.</li>
-          </ol>
-        </div>
+        {enrollMessage ? (
+          <div className={`mb-5 p-4 rounded-xl border flex flex-col items-center justify-center text-center gap-3 ${
+            enrollMessage.startsWith('Berhasil')
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : enrollMessage.startsWith('Gagal')
+              ? 'bg-red-500/10 border-red-500/30 text-red-400'
+              : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+          }`}>
+            {isEnrolling ? (
+              <Loader2 className="w-8 h-8 animate-spin" />
+            ) : enrollMessage.startsWith('Berhasil') ? (
+              <Fingerprint className="w-8 h-8" />
+            ) : (
+              <AlertTriangle className="w-8 h-8" />
+            )}
+            <div>
+              <p className="font-mono text-sm font-bold">{enrollMessage}</p>
+              {isEnrolling && (
+                <p className="text-[11px] mt-1 opacity-80 font-mono">
+                  Perhatikan instruksi di atas dan lakukan pada sensor Kotak Kunci.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mb-5 p-3 rounded-lg border flex gap-3 bg-white/5 border-white/10">
+            <Fingerprint className="w-5 h-5 shrink-0 text-emerald-500" />
+            <ol className="text-[10px] font-mono leading-relaxed text-slate-400 list-decimal pl-3 space-y-0.5">
+              <li>Isi nama dan pangkat personel baru di form ini, lalu klik Simpan.</li>
+              <li>Alat Kotak Kunci akan otomatis berbunyi dan masuk ke mode pendaftaran.</li>
+              <li>Personel diminta menempelkan jari yang sama sebanyak dua kali ke sensor.</li>
+            </ol>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 rounded-lg border flex gap-2 text-xs bg-red-500/10 border-red-500/30 text-red-300">
@@ -96,10 +147,11 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
             <input
               type="text"
               required
+              disabled={isEnrolling || isSubmitting}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="Contoh: Budi Santoso"
-              className={inputClass}
+              className={`${inputClass} disabled:opacity-50`}
             />
           </div>
 
@@ -109,26 +161,11 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
             </label>
             <input
               type="text"
+              disabled={isEnrolling || isSubmitting}
               value={formData.rank_nrp}
               onChange={(e) => setFormData({ ...formData, rank_nrp: e.target.value })}
               placeholder="Contoh: Praka Inf / 312..."
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold mb-1.5 text-slate-400">
-              ID Sidik Jari di Sensor <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number"
-              required
-              min={1}
-              max={127}
-              value={formData.fingerprint_id}
-              onChange={(e) => setFormData({ ...formData, fingerprint_id: e.target.value })}
-              placeholder={nextFreeId ? `Contoh: ${nextFreeId}` : '1 - 127'}
-              className={`${inputClass} font-mono`}
+              className={`${inputClass} disabled:opacity-50`}
             />
           </div>
 
@@ -138,10 +175,11 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
             </label>
             <textarea
               rows={2}
+              disabled={isEnrolling || isSubmitting}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               placeholder="Keterangan tambahan..."
-              className={inputClass}
+              className={`${inputClass} disabled:opacity-50`}
             />
           </div>
 

@@ -21,6 +21,8 @@ Route::middleware('device.key')->prefix('device')->group(function () {
     // Kotak kunci dua board: Board A (sidik jari) & Board B (ESP32-CAM)
     Route::post('/keybox/log', [KeyBoxController::class, 'log']);
     Route::post('/keybox/foto', [KeyBoxController::class, 'photo']);
+    Route::get('/keybox/command', [KeyBoxController::class, 'command']);
+    Route::post('/keybox/enroll-status', [KeyBoxController::class, 'enrollStatus']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -31,6 +33,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/motion-events', [MotionEventController::class, 'index']);
     Route::get('/personnel', [PersonnelController::class, 'index']);
     Route::get('/device-status', [DeviceStatusController::class, 'show']);
+    Route::get('/keybox-status', [DeviceStatusController::class, 'keyboxStatus']);
+    Route::post('/keybox/command', [DeviceStatusController::class, 'sendKeyboxCommand']);
     Route::post('/device/pir-mode', [DeviceStatusController::class, 'setPirMode']);
     Route::get('/device/pir-mode-logs', [DeviceStatusController::class, 'pirModeLogs']);
     Route::post('/device/flash', [DeviceStatusController::class, 'setFlash']);

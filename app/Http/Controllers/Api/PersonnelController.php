@@ -23,10 +23,42 @@ class PersonnelController extends Controller
 
     public function store(Request $request)
     {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'rank_nrp' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $usedIds = Personnel::whereNotNull('fingerprint_id')->pluck('fingerprint_id')->toArray();
+        $freeId = null;
+        for ($i = 1; $i <= 127; $i++) {
+            if (!in_array($i, $usedIds)) {
+                $freeId = $i;
+                break;
+            }
+        }
+
+        if (!$freeId) {
+            abort(400, 'Kapasitas sidik jari penuh (maksimal 127 orang).');
+        }
+
         $personnel = Personnel::create([
-            ...$this->validated($request),
+            ...$data,
+            'fingerprint_id' => $freeId,
             'status' => 'active',
         ]);
+
+        // Langsung kirim perintah ENROLL ke Board A
+        $device = \App\Models\DeviceStatus::where('device_id', 'kotak-kunci-01')->first();
+        if ($device) {
+            $device->update([
+                'keybox_command' => 'ENROLL',
+                'keybox_command_at' => now(),
+                'keybox_command_target' => $freeId,
+                'keybox_enroll_message' => 'Menunggu pendaftaran sidik jari di alat...',
+                'keybox_enroll_message_at' => now(),
+            ]);
+        }
 
         return new PersonnelResource($personnel);
     }
@@ -52,7 +84,21 @@ class PersonnelController extends Controller
      */
     public function deactivate(Personnel $personnel)
     {
+        $fingerprintId = $personnel->fingerprint_id;
+        
         $personnel->update(['status' => 'inactive', 'fingerprint_id' => null]);
+
+        // Antrekan perintah DELETE ke Board A jika sebelumnya punya ID
+        if ($fingerprintId) {
+            $device = \App\Models\DeviceStatus::where('device_id', 'kotak-kunci-01')->first();
+            if ($device) {
+                $device->update([
+                    'keybox_command' => 'DELETE',
+                    'keybox_command_at' => now(),
+                    'keybox_command_target' => $fingerprintId,
+                ]);
+            }
+        }
 
         return new PersonnelResource($personnel);
     }
@@ -74,7 +120,7 @@ class PersonnelController extends Controller
             ],
         ], [
             'fingerprint_id.unique' => 'ID sidik jari ini sudah dipakai personel lain.',
-            'fingerprint_id.between' => 'ID sidik jari harus 1 sampai 127, sama dengan yang diketik saat pendaftaran di Board A.',
+            'fingerprint_id.between' => 'ID sidik jari harus 1 sampai 127.',
         ]);
     }
 }
