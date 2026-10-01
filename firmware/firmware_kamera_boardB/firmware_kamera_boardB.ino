@@ -101,15 +101,20 @@ const int PIN_PEMICU = 13;      // <- GPIO 25 Board A, ground bersama
    BAGIAN 3  -  KEADAAN
    ================================================================== */
 
-/* Pemicu diukur LEBARNYA di dalam interupsi. Alasannya di Bagian 4. */
-volatile unsigned long naikPada    = 0;
-volatile bool          pemicuSah   = false;
-volatile unsigned long pemicuPalsu = 0;
+/* Pemicu diukur LEBARNYA di dalam interupsi. Alasannya di Bagian 4.
+   pemicuTertunda adalah PENGHITUNG, bukan tanda ya/tidak: dulu tanda
+   ya/tidak membuat tiga tempelan jari beruntun selagi kamera sibuk
+   melebur jadi satu foto. */
+volatile unsigned long naikPada       = 0;
+volatile unsigned long pemicuTertunda = 0;
+volatile unsigned long pemicuPalsu    = 0;
+portMUX_TYPE           kunciPemicu    = portMUX_INITIALIZER_UNLOCKED;
 
 bool          kameraSiap   = false;
 unsigned long nomorPemicu  = 0;
-unsigned long berhasilKirim = 0;
-unsigned long gagalKirim    = 0;
+volatile unsigned long berhasilKirim = 0;
+volatile unsigned long gagalKirim    = 0;   // ditolak server, tidak diulang
+volatile unsigned long fotoDibuang   = 0;   // antrean penuh / memori habis
 unsigned long wifiCobaTerakhir = 0;
 unsigned long heartbeatTerakhir = 0;
 
@@ -122,14 +127,12 @@ volatile unsigned long bingkaiDisiarkan = 0;
 
 const unsigned long JEDA_COBA_WIFI = 15000;
 
-/* Timeout diturunkan dari 8 ke 5 detik, dan percobaan dari 3 ke 2.
-   Alasannya: selama pengiriman berlangsung, siaran ikut berhenti.
-   Dengan angka lama, satu kegagalan beruntun membekukan siaran
-   sampai 25 detik - di depan penguji itu terlihat seperti sistem
-   yang hang. Sekarang paling lama 10,4 detik. Pengiriman foto yang
-   berhasil selama ini hanya butuh sekitar 0,7 detik, jadi 5 detik
-   masih tujuh kali lipat kelonggaran. */
-const unsigned long TIMEOUT_HTTP = 5000;
+/* Pengiriman berjalan di task sendiri (Bagian 6), jadi timeout yang
+   panjang tidak lagi membekukan siaran atau menunda foto berikutnya.
+   Timeout 5 detik yang lama justru terlalu ketat: balasan yang telat
+   dianggap gagal padahal fotonya sudah tersimpan, lalu dikirim dua
+   kali. */
+const unsigned long TIMEOUT_HTTP = 10000;
 
 /* Jendela lebar pulsa yang diakui sebagai perintah sungguhan.
    Pulsa asli dari Board A lamanya 50 ms, jadi ada kelonggaran besar
@@ -170,7 +173,8 @@ void garis() {
    selebar mikrodetik ditolak dan dihitung sebagai gangguan.
 
    Karena yang bekerja adalah interupsi, pulsa tetap tertangkap walau
-   loop sedang sibuk mengirim foto.
+   loop sedang sibuk. Setiap pulsa sah menambah penghitung, jadi
+   tempelan beruntun menghasilkan foto sebanyak tempelannya.
    ================================================================== */
 
 void IRAM_ATTR tanganiTepi() {
@@ -183,8 +187,13 @@ void IRAM_ATTR tanganiTepi() {
   unsigned long lebar = millis() - naikPada;
   naikPada = 0;
 
-  if (lebar >= LEBAR_MIN_PULSA && lebar <= LEBAR_MAX_PULSA) pemicuSah = true;
-  else                                                      pemicuPalsu++;
+  if (lebar >= LEBAR_MIN_PULSA && lebar <= LEBAR_MAX_PULSA) {
+    portENTER_CRITICAL_ISR(&kunciPemicu);
+    pemicuTertunda++;
+    portEXIT_CRITICAL_ISR(&kunciPemicu);
+  } else {
+    pemicuPalsu++;
+  }
 }
 
 /* ==================================================================
@@ -268,43 +277,51 @@ bool mulaiKamera() {
 }
 
 /* ==================================================================
-   BAGIAN 6  -  PENGIRIMAN FOTO
-   Dikirim sebagai multipart/form-data. Kalau rekan Anda mengubah
-   format penerimaannya, hanya fungsi ini yang perlu diubah.
+   BAGIAN 6  -  ANTREAN DAN PENGIRIMAN FOTO
+
+   Memotret dan mengirim sengaja dipisah. Dulu keduanya berurutan di
+   loop utama: selama satu foto dikirim (bisa belasan detik kalau
+   jaringan tersendat), tempelan jari berikutnya tidak terpotret. Di
+   dashboard itu tampil sebagai log akses tanpa foto.
+
+   Sekarang potret() hanya menyalin gambar ke antrean di PSRAM lalu
+   selesai dalam sepersekian detik. Task tugasKirim(), yang berjalan
+   sendiri di inti 0, mengambil foto dari antrean dan mengirimnya satu
+   per satu. Foto yang gagal terkirim karena jaringan/server dicoba
+   lagi terus dengan jeda makin panjang, bukan dibuang setelah dua
+   kali. Kalau antrean penuh, foto TERLAMA yang dibuang.
+
+   Setiap kiriman membawa:
+     waktu_ms - jam papan saat memotret, SAMA di setiap percobaan.
+                Bersama nomor_pemicu, server memakainya untuk mengenali
+                kiriman ulang, jadi foto tidak tersimpan dua kali.
+     umur_ms  - sudah berapa lama foto itu menunggu, dihitung tepat
+                sebelum dikirim. Server memakainya untuk menghitung jam
+                potret yang sebenarnya dan memasangkan foto dengan log
+                Board A berdasarkan jam itu, bukan jam tiba.
    ================================================================== */
 
-/* Berapa kali dicoba total kalau gagal (1 percobaan awal + sisanya
-   pengulangan). Sinyal WiFi board ini sering di bawah -75 dBm, jadi
-   kegagalan kirim yang sifatnya sesaat lebih sering terjadi di sini
-   dibanding di Board A yang cuma kirim teks kecil. Board A punya
-   antrean; board ini tidak (frame kamera tidak disimpan), jadi
-   pengulangan dilakukan langsung di sini sebelum frame dilepas. */
-const int PERCOBAAN_KIRIM_FOTO = 2;
-const unsigned long JEDA_ANTAR_PERCOBAAN = 400;
+struct FotoTertunda {
+  unsigned long nomor;
+  unsigned long waktu;      // millis() saat memotret
+  uint8_t      *data;       // salinan JPEG, milik antrean
+  size_t        panjang;
+};
 
-bool kirimFotoSekali(camera_fb_t *fb, unsigned long nomor);
+// Satu foto SVGA sekitar 30-60 KB, jadi 10 foto muat lega di PSRAM
+// 4 MB. Tanpa PSRAM, salinannya makan heap biasa - cukup 2 saja.
+const int MUAT_ANTREAN_FOTO       = 10;
+const int MUAT_ANTREAN_FOTO_DRAM  = 2;
+const unsigned long JEDA_ULANG_AWAL = 1000;
+const unsigned long JEDA_ULANG_MAX  = 30000;
 
-bool kirimFoto(camera_fb_t *fb, unsigned long nomor) {
-  if (!KIRIM_KE_SERVER) return true;
+QueueHandle_t antreanFoto = NULL;
 
-  for (int percobaan = 1; percobaan <= PERCOBAAN_KIRIM_FOTO; percobaan++) {
-    if (WiFi.status() != WL_CONNECTED) return false;
+void kirimHeartbeat();
 
-    if (kirimFotoSekali(fb, nomor)) return true;
-
-    if (percobaan < PERCOBAAN_KIRIM_FOTO) {
-      Serial.print(F("  Coba lagi ("));
-      Serial.print(percobaan + 1);
-      Serial.print('/');
-      Serial.print(PERCOBAAN_KIRIM_FOTO);
-      Serial.println(F(") ..."));
-      delay(JEDA_ANTAR_PERCOBAAN);
-    }
-  }
-  return false;
-}
-
-bool kirimFotoSekali(camera_fb_t *fb, unsigned long nomor) {
+/* Hasil: kode HTTP dari server, atau angka negatif kalau gagal sebelum
+   ada balasan (tidak tersambung, timeout, memori habis). */
+int kirimFotoSekali(const FotoTertunda &f) {
   const char* BATAS = "----KotakKunciBengpuskomlekad";
 
   String kepala = "";
@@ -314,31 +331,35 @@ bool kirimFotoSekali(camera_fb_t *fb, unsigned long nomor) {
 
   kepala += "--"; kepala += BATAS; kepala += "\r\n";
   kepala += "Content-Disposition: form-data; name=\"nomor_pemicu\"\r\n\r\n";
-  kepala += String(nomor); kepala += "\r\n";
+  kepala += String(f.nomor); kepala += "\r\n";
 
   kepala += "--"; kepala += BATAS; kepala += "\r\n";
   kepala += "Content-Disposition: form-data; name=\"waktu_ms\"\r\n\r\n";
-  kepala += String(millis()); kepala += "\r\n";
+  kepala += String(f.waktu); kepala += "\r\n";
+
+  kepala += "--"; kepala += BATAS; kepala += "\r\n";
+  kepala += "Content-Disposition: form-data; name=\"umur_ms\"\r\n\r\n";
+  kepala += String(millis() - f.waktu); kepala += "\r\n";
 
   kepala += "--"; kepala += BATAS; kepala += "\r\n";
   kepala += "Content-Disposition: form-data; name=\"foto\"; filename=\"tap_";
-  kepala += String(nomor); kepala += ".jpg\"\r\n";
+  kepala += String(f.nomor); kepala += ".jpg\"\r\n";
   kepala += "Content-Type: image/jpeg\r\n\r\n";
 
   String ekor = "\r\n--";
   ekor += BATAS; ekor += "--\r\n";
 
-  size_t total = kepala.length() + fb->len + ekor.length();
+  size_t total = kepala.length() + f.panjang + ekor.length();
 
   uint8_t *badan = (uint8_t*) (psramFound() ? ps_malloc(total) : malloc(total));
   if (!badan) {
     Serial.println(F("  Memori tidak cukup untuk menyusun kiriman."));
-    return false;
+    return -100;
   }
 
   memcpy(badan, kepala.c_str(), kepala.length());
-  memcpy(badan + kepala.length(), fb->buf, fb->len);
-  memcpy(badan + kepala.length() + fb->len, ekor.c_str(), ekor.length());
+  memcpy(badan + kepala.length(), f.data, f.panjang);
+  memcpy(badan + kepala.length() + f.panjang, ekor.c_str(), ekor.length());
 
   HTTPClient http;
   http.setTimeout(TIMEOUT_HTTP);
@@ -351,25 +372,76 @@ bool kirimFotoSekali(camera_fb_t *fb, unsigned long nomor) {
   int kode = http.POST(badan, total);
   http.end();
   free(badan);
+  return kode;
+}
 
-  if (kode > 0 && kode < 400) {
-    Serial.print(F("  Terkirim, balasan "));
-    Serial.println(kode);
-    return true;
+/* Kirim satu foto sampai berhasil. Kode 4xx (selain 408/429) berarti
+   server menolak isinya - kunci salah, data tidak sah - dan mengulang
+   tidak akan mengubah apa pun, jadi foto itu dilepas. Selain itu
+   (Wi-Fi putus, timeout, 5xx) dicoba lagi dengan jeda makin panjang. */
+void kirimSampaiBerhasil(const FotoTertunda &f) {
+  unsigned long jeda = JEDA_ULANG_AWAL;
+
+  while (true) {
+    if (WiFi.status() == WL_CONNECTED) {
+      int kode = kirimFotoSekali(f);
+
+      if (kode >= 200 && kode < 300) {
+        berhasilKirim++;
+        Serial.printf("  Foto #%lu terkirim (balasan %d, menunggu %lu ms, sisa antrean %d)\n",
+                      f.nomor, kode, millis() - f.waktu, (int) uxQueueMessagesWaiting(antreanFoto));
+        return;
+      }
+
+      if (kode >= 400 && kode < 500 && kode != 408 && kode != 429) {
+        gagalKirim++;
+        Serial.printf("  Foto #%lu DITOLAK server (kode %d), tidak diulang.\n", f.nomor, kode);
+        return;
+      }
+
+      Serial.printf("  Foto #%lu gagal terkirim (kode %d), dicoba lagi %lu ms lagi.\n", f.nomor, kode, jeda);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(jeda));
+    jeda = min(jeda * 2, JEDA_ULANG_MAX);
   }
-  Serial.print(F("  Gagal mengirim, kode "));
-  Serial.println(kode);
-  return false;
+}
+
+/* Task jaringan. Semua HTTP keluar lewat sini, termasuk heartbeat,
+   supaya loop utama tidak pernah tertahan menunggu server. */
+void tugasKirim(void *) {
+  FotoTertunda f;
+
+  for (;;) {
+    if (xQueueReceive(antreanFoto, &f, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      kirimSampaiBerhasil(f);
+      free(f.data);
+    }
+    kirimHeartbeat();
+  }
+}
+
+/* Masukkan salinan foto ke antrean. Kalau penuh, foto terlama dibuang
+   supaya kejadian terbaru tetap tersimpan. */
+void antrikanFoto(FotoTertunda f) {
+  while (xQueueSend(antreanFoto, &f, 0) != pdTRUE) {
+    FotoTertunda lama;
+    if (xQueueReceive(antreanFoto, &lama, 0) == pdTRUE) {
+      free(lama.data);
+      fotoDibuang++;
+      Serial.printf("  (antrean foto penuh, foto #%lu dibuang)\n", lama.nomor);
+    }
+  }
 }
 
 /* ==================================================================
    BAGIAN 7  -  SATU KALI MEMOTRET
 
-   Seluruh isi fungsi ini berjalan dengan siaran DIMINTA MENGALAH.
+   Siaran DIMINTA MENGALAH hanya selama gambar diambil dan disalin.
    Kameranya cuma satu; kalau siaran dan pemotretan berebut penyangga
    bingkai, yang hilang bisa justru foto percobaan akses - dan itu
-   satu-satunya hal yang tidak boleh hilang. Penonton siaran melihat
-   gambarnya membeku sekitar satu detik. Itu harga yang benar.
+   satu-satunya hal yang tidak boleh hilang. Pengiriman tidak lagi
+   ikut membekukan siaran, karena dikerjakan task tugasKirim().
    ================================================================== */
 
 void potret(const char* sebab) {
@@ -411,13 +483,23 @@ void potret(const char* sebab) {
   Serial.print(fb->len);    Serial.print(F(" byte  "));
   Serial.print(millis() - t0); Serial.println(F(" ms"));
 
-  bool ok = kirimFoto(fb, nomorPemicu);
-  if (KIRIM_KE_SERVER) { if (ok) berhasilKirim++; else gagalKirim++; }
-  else Serial.println(F("  (pengiriman dimatikan lewat konfigurasi)"));
+  FotoTertunda f = { nomorPemicu, t0, NULL, fb->len };
+  if (KIRIM_KE_SERVER) {
+    f.data = (uint8_t*) (psramFound() ? ps_malloc(fb->len) : malloc(fb->len));
+    if (f.data) memcpy(f.data, fb->buf, fb->len);
+  }
 
   esp_camera_fb_return(fb);
-
   siaranMengalah = false;            // siaran boleh jalan lagi
+
+  if (!KIRIM_KE_SERVER) {
+    Serial.println(F("  (pengiriman dimatikan lewat konfigurasi)"));
+  } else if (!f.data) {
+    fotoDibuang++;
+    Serial.println(F("  Memori tidak cukup untuk mengantrikan foto, foto dibuang."));
+  } else {
+    antrikanFoto(f);
+  }
 
   Serial.print(F("  Free heap setelah foto ini: "));
   Serial.print(ESP.getFreeHeap());
@@ -666,8 +748,13 @@ void cetakStatus() {
   Serial.println(F("  (ayunan singkat yang tidak jadi foto)"));
   Serial.print(F("   Foto terkirim    : "));
   Serial.println(berhasilKirim);
-  Serial.print(F("   Gagal terkirim   : "));
+  Serial.print(F("   Ditolak server   : "));
   Serial.println(gagalKirim);
+  Serial.print(F("   Antre dikirim    : "));
+  Serial.println(antreanFoto ? (int) uxQueueMessagesWaiting(antreanFoto) : 0);
+  Serial.print(F("   Foto dibuang     : "));
+  Serial.print(fotoDibuang);
+  Serial.println(F("  (antrean penuh / memori habis)"));
   Serial.print(F("   Penonton siaran  : "));
   Serial.println(penonton);
   Serial.print(F("   Bingkai disiarkan: "));
@@ -763,6 +850,13 @@ void setup() {
 
   if (kameraSiap) mulaiServerSiaran();
 
+  if (KIRIM_KE_SERVER) {
+    antreanFoto = xQueueCreate(psramFound() ? MUAT_ANTREAN_FOTO : MUAT_ANTREAN_FOTO_DRAM,
+                               sizeof(FotoTertunda));
+    // Inti 0, tempat Wi-Fi juga berjalan; loop utama tetap di inti 1.
+    xTaskCreatePinnedToCore(tugasKirim, "kirimFoto", 8192, NULL, 1, NULL, 0);
+  }
+
   garis();
   Serial.println(F("  Menunggu pemicu dari Board A."));
   cetakBantuan();
@@ -771,16 +865,29 @@ void setup() {
 /* ==================================================================
    BAGIAN 12  -  LOOP
    Siaran TIDAK dilayani di sini - ia punya task sendiri di dalam
-   esp_http_server. Loop ini tetap sependek sebelumnya.
+   esp_http_server. Pengiriman foto dan heartbeat juga tidak - keduanya
+   di task tugasKirim(). Loop ini hanya memotret, jadi tidak pernah
+   tertahan menunggu jaringan.
    ================================================================== */
 
+/* Ambil satu pemicu tertunda, kalau ada. Penghitungnya juga diubah
+   interupsi, jadi pengurangannya harus di dalam kunci. */
+bool ambilPemicu() {
+  bool ada = false;
+  portENTER_CRITICAL(&kunciPemicu);
+  if (pemicuTertunda > 0) {
+    pemicuTertunda--;
+    ada = true;
+  }
+  portEXIT_CRITICAL(&kunciPemicu);
+  return ada;
+}
+
 void loop() {
-  if (pemicuSah) {
-    pemicuSah = false;
+  while (ambilPemicu()) {
     potret("pemicu Board A");
   }
   layaniPerintah();
   layaniWiFi();
-  kirimHeartbeat();
   delay(5);
 }

@@ -1,0 +1,1842 @@
+/*
+ * ESP32-CAM : Live Streaming + Bot Telegram + Sensor PIR + SI-JAGA API
+ * Board   : AI Thinker ESP32-CAM
+ * PIR OUT : GPIO13
+ *
+ * Tiga fungsi sekaligus:
+ *   1. Live stream lewat browser  -> buka link dari perintah /ip di Telegram
+ *                                    (http://<IP-ESP32>/?key=<STREAM_KEY>)
+ *   2. Bot Telegram               -> notifikasi + album foto saat ada gerakan
+ *   3. Backend Laravel SI-JAGA    -> dashboard web (motion log, status
+ *                                    perangkat). Status sensor ON/OFF
+ *                                    tersinkron dua arah dengan tombol
+ *                                    "Set ON / Set OFF" di web.
+ *
+ * Perintah bot:
+ *   /start   - daftar perintah
+ *   /photo   - ambil foto sekarang
+ *   /ip      - tampilkan alamat live stream
+ *   /flash   - nyalakan / matikan LED flash
+ *   /piron   - aktifkan sensor PIR   (dikirim ke dashboard sebagai "ON")
+ *   /piroff  - matikan sensor PIR    (dikirim ke dashboard sebagai "OFF")
+ *   /status  - status sensor, flash, server, sinyal, antrean, jam
+ *
+ * KONTRAK DENGAN BACKEND LARAVEL (harus sama persis dengan sisi web):
+ *   - Nilai pir_mode HANYA "ON" atau "OFF" (dua arah: heartbeat & command).
+ *     Nilai lain dari server diabaikan (tidak mengubah status sensor).
+ *   - POST {API}/device/heartbeat      JSON  -> sukses = kode 2xx
+ *   - GET  {API}/device/command         JSON  -> sukses = kode 200
+ *   - POST {API}/device/motion-event   multipart -> sukses = kode 2xx
+ *       field: device_id, pir_mode, photo, captured_at (BARU, v4)
+ *       captured_at = waktu foto diambil, format ISO 8601, contoh
+ *       "2026-09-29T10:46:12+07:00". Karena upload bisa tertunda (antrean),
+ *       server SEBAIKNYA memakai captured_at sebagai waktu kejadian, bukan
+ *       now(). Field ini tidak dikirim kalau jam alat belum sinkron.
+ *   - Semua memakai header X-Device-Key.
+ *   - Saat heartbeat membawa pir_mode / flash_on, server WAJIB menyimpan
+ *     nilai itu juga sebagai status yang dibalas oleh /device/command,
+ *     supaya perubahan dari Telegram tidak dibatalkan poll berikutnya.
+ *   - Kode 4xx dari motion-event dianggap "ditolak permanen" -> foto
+ *     dibuang dari antrean (tidak diulang). Kode 5xx / tanpa jawaban ->
+ *     dicoba ulang.
+ *
+ * LIBRARY YANG HARUS DIINSTALL:
+ *   1. "UniversalTelegramBot" by Brian Lough
+ *   2. "ArduinoJson" by Benoit Blanchon (versi 6.x, BUKAN 7)
+ *
+ * Setting Arduino IDE:
+ *   Papan            : AI Thinker ESP32-CAM
+ *   Partition Scheme : Huge APP (3MB No OTA/1MB SPIFFS)
+ *   Flash Mode       : DIO,  Flash Frequency : 40MHz
+ *
+ * CATATAN DAYA: streaming + Telegram + API menarik arus besar.
+ * Gunakan sumber 5V terpisah yang kuat (charger 5V 2A).
+ *
+ * Ingat: tahan IO0 saat upload (atau jumper IO0 -> GND), lalu RST.
+ *
+ * ===========================================================
+ * RIWAYAT PERUBAHAN
+ * v2 (versi awal integrasi): heartbeat, poll perintah, upload motion-event.
+ * v3 (27-28 Sep 2026): pir_mode ON/OFF, sinkron dua arah yang aman,
+ *    timeout pendek, config.h, stream port 81 + kunci, pull-down PIR,
+ *    stack loop 16 KB, foto resolusi tinggi, stream berbagi WiFi.
+ * v4 (29 Sep 2026):
+ *    1. Koneksi HTTPS ke Telegram dipakai ulang (keep-alive) -> foto
+ *       berikutnya tidak perlu "berkenalan" (handshake) lagi, lebih cepat.
+ *    2. Semua komunikasi ke server Laravel (upload, heartbeat, poll)
+ *       dikerjakan di latar belakang, di inti prosesor lain. loop() tidak
+ *       lagi menunggu server -> perintah Telegram cepat dibalas.
+ *    3. Jam & tanggal (NTP, WIB) di caption foto dan dikirim ke server
+ *       sebagai captured_at.
+ *    4. Antrean upload: foto yang gagal di-upload ke dashboard disimpan di
+ *       PSRAM dan dikirim ulang otomatis saat server hidup lagi.
+ *    5. Setiap kejadian: beberapa foto beruntun. Foto paling tajam (file
+ *       terbesar) masuk dashboard.
+ * v4.1 (29 Sep 2026):
+ *    6. Foto PERTAMA dikirim duluan (notifikasi secepat mungkin), foto
+ *       sisanya menyusul sebagai album kecil.
+ *    7. Antrean ulang Telegram: kalau internet putus, foto kejadian tidak
+ *       hilang -- disimpan di PSRAM dan dikirim otomatis saat koneksi pulih
+ *       (diberi tanda TERTUNDA + jam kejadian asli).
+ *    8. Diagnosis gagal koneksi Telegram (jaringan vs memori), batas waktu
+ *       koneksi lebih pendek, koneksi menganggur > 45 dtk dibuka baru.
+ * v4.3 (29 Sep 2026): cara menyambung ke Telegram DIKEMBALIKAN seperti kode
+ *    lama yang terbukti tidak putus di lokasi jauh dari router: sabar
+ *    menunggu koneksi & handshake (batas bawaan library), dan koneksi
+ *    dibuka baru setiap kirim (tanpa keep-alive, bisa diaktifkan lagi lewat
+ *    PAKAI_KEEP_ALIVE_TELEGRAM kalau sinyal di lokasi kuat).
+ * v4.2 (29 Sep 2026):
+ *    9. Pesan "Alat online kembali" ke Telegram setelah koneksi sempat
+ *       putus: kapan mulai putus, berapa lama, dan berapa kejadian
+ *       tertunda yang akan dikirim.
+ * v4.4 (29 Sep 2026): perbaikan stream patah-patah & restart saat memotret.
+ *   10. Sensor kamera tidak lagi diganti resolusinya kalau resolusi foto
+ *       sama dengan stream (default). Pergantian itu mereset DMA kamera ->
+ *       "cam_hal: EV-EOF-OVF" lalu TG1WDT_SYS_RESET.
+ *   11. PIR kembali dipicu interupsi saja (gerakan baru), seperti kode lama.
+ *       Level HIGH berulang bisa diaktifkan lewat PICU_ULANG_SAAT_PIR_HIGH.
+ *   12. Stream hanya mengunci kamera saat mengambil frame, tidak selama
+ *       frame dikirim lewat WiFi.
+ * v4.5 (29 Sep 2026): Telegram tidak lagi dibanjiri pesan, stream lebih ringan.
+ *   13. "Sistem aktif" hanya dikirim kalau pesan terakhir sudah lebih dari
+ *       JEDA_MIN_PESAN_AKTIF (30 menit). Waktunya disimpan di flash (NVS),
+ *       jadi tetap diingat walau listrik mati. Restart yang tidak dilaporkan
+ *       dihitung dan disebut di pesan berikutnya, lengkap dengan penyebab
+ *       restart terakhir (listrik/tombol, crash, watchdog, brownout).
+ *   14. "Alat online kembali" hanya dikirim kalau putusnya >= BATAS_LAPOR_PUTUS
+ *       (60 detik). Putus sebentar karena sinyal lemah cukup dicatat di Serial.
+ *   15. Stream tidak lagi diperlambat saat foto dikirim ke Telegram (dulu
+ *       JEDA_FRAME_SAAT_KIRIM, ~5 fps selama 3-5 detik tiap kiriman -- itu
+ *       penyebab stream tersendat). Mutex kamera dan vTaskDelay(1) per frame
+ *       TETAP ada: percobaan membuang keduanya (29 Sep) membuat board crash
+ *       (LoadProhibited) dan watchdog reset beberapa detik setelah stream
+ *       dibuka. Stream hanya dijeda kalau setelan foto berbeda dari stream.
+ *   16. /status menampilkan penyebab restart terakhir dan lama menyala.
+ * ===========================================================
+ */
+
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <time.h>
+#include "esp_heap_caps.h"
+#include "esp_camera.h"
+#include "esp_http_server.h"
+#include "esp_timer.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+#include <Preferences.h>
+#include "config.h"   // Kredensial asli -- lihat config.h.example untuk template
+
+// Stack loop() dinaikkan dari 8 KB ke 16 KB. Koneksi HTTPS ke Telegram
+// (handshake TLS) memakai banyak stack; dengan 8 KB bisa muncul crash
+// "Stack canary watchpoint triggered (loopTask)" setelah kirim foto.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
+// ===================================================
+// 1. KREDENSIAL (diambil dari config.h, JANGAN hardcode di sini)
+// ===================================================
+// PENTING soal API_BASE_URL: harus IP LAN komputer server (bukan
+// "localhost" -- ESP32 tidak bisa mengaksesnya). Pertimbangkan set IP
+// static/reservation untuk komputer server di pengaturan router.
+const char* ssid     = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+
+String BOT_TOKEN = BOT_TOKEN_VAL;
+String CHAT_ID   = CHAT_ID_VAL;
+
+const char* API_BASE_URL   = API_BASE_URL_VAL;
+const char* DEVICE_ID      = DEVICE_ID_VAL;
+const char* DEVICE_API_KEY = DEVICE_API_KEY_VAL;
+const char* STREAM_KEY     = STREAM_KEY_VAL;
+
+// ===================================================
+// 2. PENGATURAN
+// ===================================================
+#define PIR_PIN        13
+#define FLASH_LED_PIN   4
+#define STREAM_PORT    81
+
+// 0 = detektor brownout AKTIF (disarankan: kalau tegangan drop, ESP32
+//     restart bersih, bukan hang / foto rusak).
+// 1 = dimatikan. Pakai HANYA kalau alat restart terus-menerus karena
+//     suplai 5V belum kuat -- dan perbaiki suplainya secepatnya.
+#define MATIKAN_BROWNOUT 1
+
+// Resolusi & kualitas. Foto untuk Telegram/dashboard diambil dengan
+// resolusi TINGGI supaya wajah jelas; stream memakai resolusi lebih kecil
+// supaya lancar. Kamera pindah resolusi sebentar hanya saat memotret.
+// Pilihan resolusi foto (makin besar = makin jelas, tapi file lebih besar
+// dan kirim ke Telegram sedikit lebih lama):
+//   FRAMESIZE_SVGA (800x600), FRAMESIZE_XGA (1024x768),
+//   FRAMESIZE_SXGA (1280x1024), FRAMESIZE_UXGA (1600x1200, maksimum OV2640)
+// Kualitas JPEG: angka KECIL = lebih bagus (10 = sangat bagus).
+// Default dibuat SAMA dengan kode lama (640x480, kualitas 12) karena ukuran
+// ini terbukti tetap terkirim walau alat jauh dari router (sinyal lemah).
+// Kalau sinyal di lokasi kuat (/status di atas -67 dBm), boleh dinaikkan ke
+// FRAMESIZE_SVGA atau FRAMESIZE_XGA supaya wajah lebih tajam.
+const framesize_t RESOLUSI_FOTO   = FRAMESIZE_VGA;
+const int         KUALITAS_FOTO   = 12;
+const framesize_t RESOLUSI_STREAM = FRAMESIZE_VGA;   // 640x480
+const int         KUALITAS_STREAM = 12;
+
+// Jumlah foto per kejadian gerakan. Foto pertama langsung dikirim (notifikasi
+// cepat), sisanya menyusul. 1 = satu foto saja. 2-3 = peluang dapat wajah
+// jelas lebih besar.
+const int      JUMLAH_FOTO_PER_KEJADIAN = 1;   // 1 = paling ringan (seperti kode lama)
+const uint32_t JEDA_ANTAR_JEPRETAN      = 400;   // ms antar foto dalam album
+
+// false = foto HANYA dipicu gerakan baru (interupsi LOW->HIGH), sama seperti
+//         kode lama. Orang yang diam lama di depan sensor tidak memicu foto
+//         berulang, jadi stream tidak terus-menerus dijeda.
+// true  = selama pin PIR masih HIGH, foto diulang setiap JEDA_ANTAR_FOTO.
+const bool PICU_ULANG_SAAT_PIR_HIGH = false;
+
+const unsigned long WAKTU_KALIBRASI    = 30000;  // pemanasan PIR (ms)
+const unsigned long JEDA_ANTAR_FOTO    = 15000;  // jeda minimal antar notifikasi (ms)
+const unsigned long JEDA_CEK_PESAN     = 3000;   // frekuensi cek pesan Telegram (ms)
+const unsigned long JEDA_HEARTBEAT     = 30000;  // frekuensi lapor "online" ke server (ms)
+const unsigned long JEDA_POLL_PERINTAH = 10000;  // frekuensi sinkron status dari dashboard (ms)
+const unsigned long JEDA_SERVER_MATI   = 60000;  // saat server tak terjangkau, coba lagi tiap 60 dtk
+const unsigned long JEDA_ULANG_UPLOAD  = 30000;  // upload gagal -> coba lagi tiap 30 dtk
+const unsigned long JEDA_CEK_WIFI      = 10000;  // frekuensi cek koneksi WiFi (ms)
+const unsigned long JEDA_ULANG_TELEGRAM = 20000; // kiriman Telegram gagal -> coba lagi tiap 20 dtk
+
+// Pesan "Sistem aktif" saat menyala tidak dikirim lagi kalau pesan
+// sebelumnya belum lewat selama ini. Tanpa batas ini, setiap restart
+// (termasuk membuka Serial Monitor, yang ikut me-reset board) mengirim
+// pesan baru ke Telegram.
+const unsigned long JEDA_MIN_PESAN_AKTIF = 30UL * 60UL;   // detik (30 menit)
+
+// Koneksi yang putus lebih singkat dari ini tidak dilaporkan ke Telegram
+// ("Alat online kembali"), cukup dicatat di Serial.
+const unsigned long BATAS_LAPOR_PUTUS = 60000;   // ms
+
+// Antrean upload ke dashboard (disimpan di PSRAM). Kalau penuh, foto
+// tertua dibuang supaya memori tidak habis. 8 foto XGA ~ 0,5-0,8 MB.
+const int ANTREAN_UPLOAD_MAKS = 8;
+
+// Antrean ulang Telegram (kejadian yang belum terkirim karena internet
+// putus). Kalau penuh, kejadian tertua dibuang. 5 kejadian x 3 foto ~ 0,7 MB.
+const int ANTREAN_TELEGRAM_MAKS = 5;
+
+// Batas waktu ke server Laravel.
+const int32_t  TIMEOUT_KONEK_SERVER  = 2000;   // membuka koneksi (ms)
+const uint16_t TIMEOUT_BACA_SERVER   = 5000;   // menunggu balasan heartbeat/poll (ms)
+const unsigned long TIMEOUT_UPLOAD   = 12000;  // menunggu balasan upload foto (ms)
+const unsigned long TIMEOUT_TELEGRAM = 20000;  // menunggu balasan Telegram (ms)
+// Koneksi ke Telegram: SAMA seperti kode lama yang terbukti stabil walau
+// alat jauh dari router -> koneksi dibuka baru setiap kirim, dan menunggu
+// koneksi/handshake dengan SABAR (batas bawaan library, bukan dipersingkat).
+// Di sinyal lemah, menyambung memang lambat tapi berhasil; batas waktu yang
+// terlalu pendek justru membuat pengiriman dianggap gagal.
+// true = koneksi dibiarkan terbuka (lebih cepat, tapi hanya cocok untuk
+// lokasi dengan sinyal kuat).
+const bool PAKAI_KEEP_ALIVE_TELEGRAM = false;
+// Kalau keep-alive dipakai: koneksi menganggur lebih lama dari ini dibuka baru.
+const unsigned long IDLE_MAKS_TELEGRAM = 45000;
+
+// Zona waktu WIB (UTC+7) dan server jam internet.
+const char* ZONA_WAKTU = "WIB-7";
+const char* NTP_1      = "pool.ntp.org";
+const char* NTP_2      = "time.google.com";
+
+// ===================================================
+// STATUS BERSAMA (dipakai loop() dan task server di latar belakang)
+// ===================================================
+volatile bool flashMenyala = false;
+
+// pirAktif = saklar on/off sensor. true = gerakan memicu foto + notifikasi
+// Telegram + catat ke dashboard; false = tidak terjadi apa-apa.
+// Ke server dikirim sebagai "ON" / "OFF" -- hanya dua nilai itu.
+volatile bool pirAktif = true;
+
+// Penanda "perubahan dari Telegram yang BELUM berhasil dikirim ke server".
+// Selama true: task server terus mencoba mengirimnya, dan status dari
+// server TIDAK diterapkan (supaya tidak membatalkan perintah Telegram).
+volatile bool modeBelumTerkirim  = false;
+volatile bool flashBelumTerkirim = false;
+
+// loop() meminta task server segera sinkron (setelah /flash, /piron,
+// /piroff, atau WiFi baru tersambung lagi).
+volatile bool mintaSinkronSegera = false;
+
+String modePirUntukServer() {
+  return pirAktif ? "ON" : "OFF";
+}
+
+volatile unsigned long waktuFotoTerakhir = 0;
+unsigned long waktuCekPesanTerakhir  = 0;
+unsigned long waktuHeartbeatTerakhir = 0;
+unsigned long waktuPollTerakhir      = 0;
+unsigned long waktuCekWifiTerakhir   = 0;
+volatile bool serverTerhubung = false;
+bool wifiSedangPutus = false;
+
+// Hasil penguraian API_BASE_URL (dipakai untuk upload foto bertahap).
+String   apiHost;
+uint16_t apiPort = 80;
+String   apiPath;
+bool     apiUrlValid = false;
+
+// Antrean upload dashboard. Isinya pointer ke ItemUpload (di PSRAM).
+struct ItemUpload {
+  uint8_t* data;
+  size_t   len;
+  char     waktuIso[32];   // kosong kalau jam belum sinkron
+};
+QueueHandle_t antreanUpload = NULL;
+ItemUpload* volatile uploadSedangDiproses = NULL;
+
+// Satu kejadian gerakan yang harus sampai ke Telegram (dipakai hanya di
+// loop(), jadi tidak perlu pengaman antar-task).
+#define MAKS_FOTO_KEJADIAN 3
+struct KirimanTelegram {
+  uint8_t* foto[MAKS_FOTO_KEJADIAN];
+  size_t   len[MAKS_FOTO_KEJADIAN];
+  int      jumlah;
+  bool     pertamaTerkirim;      // foto pertama sudah sampai?
+  bool     tertunda;             // pernah gagal -> beri tanda di caption
+  char     waktu[32];            // jam kejadian asli, untuk caption
+};
+static_assert(JUMLAH_FOTO_PER_KEJADIAN >= 1 && JUMLAH_FOTO_PER_KEJADIAN <= MAKS_FOTO_KEJADIAN,
+              "JUMLAH_FOTO_PER_KEJADIAN harus 1 sampai 3");
+KirimanTelegram* antreanTelegram[ANTREAN_TELEGRAM_MAKS];
+int jumlahAntreanTelegram = 0;
+unsigned long waktuCobaTelegramTerakhir = 0;
+
+// Penanda "koneksi ke Telegram sempat putus" -> setelah pulih, kirim pesan
+// "Alat online kembali". Dipakai hanya di loop().
+bool perluLaporOnline = false;
+unsigned long waktuMulaiPutus = 0;        // millis() saat pertama putus
+char teksMulaiPutus[32] = "";             // jam saat pertama putus
+unsigned long waktuCobaLaporOnline = 0;
+
+// ===================================================
+// 3. PIN KAMERA (AI Thinker ESP32-CAM)
+// ===================================================
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+// Koneksi untuk membaca perintah (getUpdates) lewat library bot.
+WiFiClientSecure clientTCP;
+UniversalTelegramBot bot(BOT_TOKEN, clientTCP);
+
+// Koneksi KHUSUS kirim foto, dibiarkan tetap terbuka (keep-alive) supaya
+// foto berikutnya tidak perlu handshake HTTPS lagi.
+WiFiClientSecure klienTelegram;
+unsigned long waktuTelegramTerakhir = 0;   // terakhir kali koneksi ini sukses dipakai
+
+// ===================================================
+// INTERRUPT PIR
+// Dipanggil otomatis oleh hardware saat PIR berubah LOW->HIGH,
+// bahkan ketika program sedang sibuk mengirim data ke Telegram.
+// ===================================================
+volatile bool adaGerakan = false;   // diisi oleh interrupt, jangan diubah manual
+
+// Kamera dipakai bergantian oleh stream (task web server) dan pengambilan
+// foto (loop). Mutex memastikan keduanya tidak bertabrakan.
+//  - streamDijeda        : stream berhenti SEBENTAR saat kamera pindah
+//                          setelan foto (hanya kalau foto != stream).
+//  - sedangKirimTelegram : selama foto dikirim ke Telegram, upload
+//                          dashboard menunggu (stream TIDAK diperlambat).
+//  - jumlahPenonton      : berapa browser yang sedang membuka stream.
+SemaphoreHandle_t kameraMutex = NULL;
+volatile bool streamDijeda = false;
+volatile bool sedangKirimTelegram = false;
+volatile int  jumlahPenonton = 0;
+bool fotoResolusiTinggi = false;    // true kalau PSRAM ada (buffer cukup besar)
+
+// Penyebab restart terakhir, dibaca sekali saat menyala.
+String teksAlasanRestart;
+
+void IRAM_ATTR isrGerakan() {
+  adaGerakan = true;
+}
+
+// Deklarasi awal fungsi lain
+bool mulaiKamera();
+void sambungkanWiFi();
+void cekWiFi();
+void mulaiWebServer();
+bool uraiApiBaseUrl();
+int  ambilBeberapaFoto(uint8_t** foto, size_t* panjang, int jumlah, uint32_t jeda);
+void prosesPesan(int jumlahPesan);
+bool kirimFotoTelegram(const uint8_t* data, size_t len, const String& keterangan);
+bool kirimAlbumTelegram(uint8_t** foto, size_t* panjang, int jumlah, const String& keterangan);
+bool kirimTelegramMultipart(const String& metode, const String& bagianTeks,
+                            const uint8_t* const* data, const size_t* len,
+                            const String* namaField, int jumlah);
+int  kirimMotionEventKeServer(const uint8_t* data, size_t len, const char* waktuIso);
+void masukkanAntreanUpload(uint8_t* data, size_t len, const String& waktuIso);
+bool kirimKejadianTelegram(KirimanTelegram* k);
+void simpanKeAntreanTelegram(KirimanTelegram* k);
+void prosesAntreanTelegram();
+void hapusKiriman(KirimanTelegram* k);
+void tandaiTerputus();
+void laporOnlineKembali();
+int  jumlahAntreanUpload();
+void kirimHeartbeat();
+void sinkronPerintahDariServer();
+void taskServer(void* param);
+String alamatHalamanStream();
+String alamatStream();
+String teksWaktu();
+String isoWaktu();
+
+// ===================================================
+// KONSTANTA STREAMING MJPEG
+// ===================================================
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char* _STREAM_BOUNDARY     = "\r\n--" PART_BOUNDARY "\r\n";
+static const char* _STREAM_PART         = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+
+// Dua web server terpisah: port 80 untuk halaman, port 81 khusus stream.
+httpd_handle_t server_web    = NULL;
+httpd_handle_t server_stream = NULL;
+
+// Halaman HTML sederhana. Alamat stream dibentuk dari IP halaman ini +
+// port 81 + kunci yang sama dengan yang dipakai membuka halaman.
+static const char PROGMEM HALAMAN_HTML[] = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32-CAM Monitor</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; background: #111; color: #eee; margin: 0; padding: 16px; }
+    h2 { font-weight: 600; margin-bottom: 4px; }
+    p { color: #999; font-size: 14px; margin-top: 0; }
+    img { width: 100%; max-width: 640px; border-radius: 8px; border: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>ESP32-CAM Monitor</h2>
+  <p>Live stream ruangan</p>
+  <img id="stream" alt="Live stream">
+  <script>
+    var k = new URLSearchParams(location.search).get('key') || '';
+    document.getElementById('stream').src =
+      'http://' + location.hostname + ':81/stream?key=' + encodeURIComponent(k);
+  </script>
+</body>
+</html>
+)rawliteral";
+
+// ===================================================
+// CEK KUNCI AKSES (?key=...) UNTUK HALAMAN & STREAM
+// ===================================================
+static bool kunciValid(httpd_req_t* req) {
+  size_t panjangQuery = httpd_req_get_url_query_len(req);
+  if (panjangQuery == 0 || panjangQuery > 127) return false;
+
+  char query[128];
+  char nilai[64];
+  if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
+  if (httpd_query_key_value(query, "key", nilai, sizeof(nilai)) != ESP_OK) return false;
+  return strcmp(nilai, STREAM_KEY) == 0;
+}
+
+static esp_err_t tolakAkses(httpd_req_t* req) {
+  httpd_resp_set_status(req, "401 Unauthorized");
+  httpd_resp_set_type(req, "text/plain");
+  const char* pesan = "Akses ditolak. Buka lewat link dari perintah /ip di bot Telegram.";
+  return httpd_resp_send(req, pesan, strlen(pesan));
+}
+
+// ===================================================
+// HANDLER HALAMAN UTAMA
+// ===================================================
+static esp_err_t index_handler(httpd_req_t *req) {
+  if (!kunciValid(req)) return tolakAkses(req);
+  httpd_resp_set_type(req, "text/html");
+  return httpd_resp_send(req, (const char *)HALAMAN_HTML, strlen(HALAMAN_HTML));
+}
+
+// ===================================================
+// HANDLER STREAMING MJPEG
+// ===================================================
+static esp_err_t stream_handler(httpd_req_t *req) {
+  if (!kunciValid(req)) return tolakAkses(req);
+
+  camera_fb_t* fb = NULL;
+  esp_err_t res = ESP_OK;
+  char part_buf[64];
+
+  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+  if (res != ESP_OK) return res;
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  jumlahPenonton++;
+  Serial.printf(">> Stream dibuka (%d penonton).\n", (int) jumlahPenonton);
+
+  // Dua hal di loop ini WAJIB ada (terbukti 29 Sep: tanpa keduanya board
+  // crash / watchdog reset beberapa detik setelah stream dibuka):
+  //  - mutex saat MENGAMBIL frame: esp_camera_fb_get() tidak boleh dipanggil
+  //    stream dan pemotretan gerakan bersamaan (LoadProhibited).
+  //  - vTaskDelay(1) tiap frame: memberi giliran ke task lain; tanpa ini
+  //    task stream memonopoli CPU sampai watchdog me-reset board.
+  // Yang SENGAJA tidak ada lagi: memperlambat stream (~5 fps) selama foto
+  // dikirim ke Telegram -- itu penyebab stream tersendat di v4.x.
+  while (true) {
+    // Hanya terjadi kalau RESOLUSI_FOTO diatur BERBEDA dari RESOLUSI_STREAM:
+    // sensor sedang pindah resolusi dan tidak boleh diganggu.
+    if (streamDijeda) {
+      vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
+
+    // Mutex hanya dipegang selama MENGAMBIL frame, bukan selama mengirimnya,
+    // supaya pemotretan gerakan tidak ikut menunggu WiFi yang lambat.
+    if (xSemaphoreTake(kameraMutex, pdMS_TO_TICKS(1000)) != pdTRUE) continue;
+    fb = esp_camera_fb_get();
+    xSemaphoreGive(kameraMutex);
+    if (!fb) {
+      res = ESP_FAIL;
+      break;
+    }
+
+    size_t hlen = snprintf(part_buf, sizeof(part_buf), _STREAM_PART, fb->len);
+
+    res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+    if (res == ESP_OK) res = httpd_resp_send_chunk(req, part_buf, hlen);
+    if (res == ESP_OK) res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+
+    esp_camera_fb_return(fb);
+    fb = NULL;
+
+    if (res != ESP_OK) break;   // browser menutup koneksi
+
+    vTaskDelay(1);   // beri giliran ke task lain (WiFi, watchdog)
+  }
+
+  jumlahPenonton--;
+  Serial.printf(">> Stream ditutup (%d penonton).\n", (int) jumlahPenonton);
+  return res;
+}
+
+// ===================================================
+// JALANKAN WEB SERVER (port 80 halaman, port 81 stream)
+// ===================================================
+void mulaiWebServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+  httpd_uri_t uri_index = {
+    .uri      = "/",
+    .method   = HTTP_GET,
+    .handler  = index_handler,
+    .user_ctx = NULL
+  };
+
+  httpd_uri_t uri_stream = {
+    .uri      = "/stream",
+    .method   = HTTP_GET,
+    .handler  = stream_handler,
+    .user_ctx = NULL
+  };
+
+  config.server_port = 80;
+  config.ctrl_port   = 32768;
+  if (httpd_start(&server_web, &config) == ESP_OK) {
+    httpd_register_uri_handler(server_web, &uri_index);
+    Serial.println("Web server halaman aktif (port 80).");
+  } else {
+    Serial.println("Web server halaman gagal dijalankan.");
+  }
+
+  config.server_port = STREAM_PORT;
+  config.ctrl_port   = 32769;
+  if (httpd_start(&server_stream, &config) == ESP_OK) {
+    httpd_register_uri_handler(server_stream, &uri_stream);
+    Serial.println("Web server stream aktif (port 81).");
+  } else {
+    Serial.println("Web server stream gagal dijalankan.");
+  }
+}
+
+// Alamat yang dibuka manusia di browser (halaman + stream).
+String alamatHalamanStream() {
+  return "http://" + WiFi.localIP().toString() + "/?key=" + String(STREAM_KEY);
+}
+
+// Alamat stream MJPEG langsung (dipakai dashboard web lewat heartbeat).
+String alamatStream() {
+  return "http://" + WiFi.localIP().toString() + ":" + String(STREAM_PORT) +
+         "/stream?key=" + String(STREAM_KEY);
+}
+
+// ===================================================
+// JAM (NTP). Tidak memblokir: kalau jam belum sinkron, teks penanda.
+// ===================================================
+static bool ambilJam(struct tm& t) {
+  if (!getLocalTime(&t, 10)) return false;
+  return (t.tm_year + 1900) >= 2024;
+}
+
+// Contoh: "29/09/2026 10:46:12 WIB"
+String teksWaktu() {
+  struct tm t;
+  if (!ambilJam(t)) return "(jam belum sinkron)";
+  char buf[32];
+  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S WIB", &t);
+  return String(buf);
+}
+
+// Contoh: "2026-09-29T10:46:12+07:00" (kosong kalau jam belum sinkron)
+String isoWaktu() {
+  struct tm t;
+  if (!ambilJam(t)) return "";
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S+07:00", &t);
+  return String(buf);
+}
+
+// ===================================================
+// PENYEBAB RESTART
+// ===================================================
+String alasanRestart(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "listrik baru menyala / tombol RST / Serial Monitor dibuka";
+    case ESP_RST_EXT:       return "reset dari pin luar";
+    case ESP_RST_SW:        return "restart oleh program";
+    case ESP_RST_PANIC:     return "CRASH (program error)";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:       return "WATCHDOG (program macet)";
+    case ESP_RST_BROWNOUT:  return "TEGANGAN DROP (brownout) - cek catu daya 5V";
+    case ESP_RST_DEEPSLEEP: return "bangun dari deep sleep";
+    default:                return "tidak diketahui";
+  }
+}
+
+// Lama menyala, contoh "2 jam 5 menit".
+String teksLamaMenyala() {
+  unsigned long menit = millis() / 60000UL;
+  if (menit < 60) return String(menit) + " menit";
+  return String(menit / 60) + " jam " + String(menit % 60) + " menit";
+}
+
+// ===================================================
+// PESAN "SISTEM AKTIF" SAAT MENYALA (dibatasi, lihat JEDA_MIN_PESAN_AKTIF)
+// Waktu pesan terakhir & jumlah restart yang belum dilaporkan disimpan di
+// NVS (flash), jadi tetap diingat walau listrik mati. Ditulis hanya saat
+// pesan benar-benar terkirim atau dilewati -- beberapa kali sehari paling
+// banyak, jauh di bawah batas umur flash.
+// ===================================================
+void kirimPesanAktif() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  Preferences simpanan;
+  simpanan.begin("pesan-aktif", false);
+  uint32_t terakhir     = simpanan.getUInt("terakhir", 0);
+  uint32_t tidakDilapor = simpanan.getUInt("tdkLapor", 0);
+
+  time_t sekarang = time(nullptr);
+  bool jamSinkron = sekarang > 1700000000;   // NTP sudah jalan (> tahun 2023)
+
+  if (jamSinkron && terakhir != 0 && (uint32_t) sekarang - terakhir < JEDA_MIN_PESAN_AKTIF) {
+    simpanan.putUInt("tdkLapor", tidakDilapor + 1);
+    simpanan.end();
+    Serial.printf(">> Pesan 'Sistem aktif' tidak dikirim (pesan terakhir < %lu menit lalu, "
+                  "restart tak dilaporkan: %lu).\n", JEDA_MIN_PESAN_AKTIF / 60, (unsigned long) (tidakDilapor + 1));
+    return;
+  }
+
+  String pesan = "Sistem aktif.\nWaktu: " + teksWaktu();
+  pesan += "\nPenyebab menyala: " + teksAlasanRestart;
+  if (tidakDilapor > 0) {
+    pesan += "\nRestart lain sejak pesan terakhir: " + String(tidakDilapor) + " kali (tidak dilaporkan satu per satu)";
+  }
+  pesan += "\nLive stream: " + alamatHalamanStream();
+  pesan += "\nSensor PIR: " + String(pirAktif ? "AKTIF" : "MATI");
+  pesan += "\nStatus server SI-JAGA: " + String(serverTerhubung ? "terhubung" : "TIDAK terhubung");
+  pesan += "\nSinyal WiFi: " + String(WiFi.RSSI()) + " dBm";
+  pesan += "\n\nKetik /start untuk daftar perintah.";
+
+  if (bot.sendMessage(CHAT_ID, pesan, "")) {
+    if (jamSinkron) simpanan.putUInt("terakhir", (uint32_t) sekarang);
+    simpanan.putUInt("tdkLapor", 0);
+  }
+  simpanan.end();
+}
+
+// ===================================================
+// SETUP
+// ===================================================
+void setup() {
+#if MATIKAN_BROWNOUT
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+#endif
+
+  Serial.begin(115200);
+  Serial.println();
+  Serial.println("=== ESP32-CAM: Stream + Telegram + PIR + SI-JAGA API (v4.5) ===");
+  teksAlasanRestart = alasanRestart(esp_reset_reason());
+  Serial.println("Penyebab menyala: " + teksAlasanRestart);
+
+  // INPUT_PULLDOWN: kalau PIR tidak terpasang / kabelnya lepas, pin tetap LOW.
+  // Tanpa ini pin "mengambang" dan menangkap gangguan (termasuk sinyal WiFi),
+  // sehingga muncul notifikasi gerakan palsu.
+  pinMode(PIR_PIN, INPUT_PULLDOWN);
+  pinMode(FLASH_LED_PIN, OUTPUT);
+  digitalWrite(FLASH_LED_PIN, LOW);
+
+  kameraMutex   = xSemaphoreCreateMutex();
+  antreanUpload = xQueueCreate(ANTREAN_UPLOAD_MAKS, sizeof(ItemUpload*));
+
+  if (!mulaiKamera()) {
+    Serial.println("Kamera gagal diinisialisasi. Program berhenti.");
+    while (true) { delay(1000); }
+  }
+
+  apiUrlValid = uraiApiBaseUrl();
+  if (!apiUrlValid) {
+    Serial.println("API_BASE_URL di config.h tidak valid (harus diawali http://). Fitur dashboard nonaktif.");
+  }
+
+  sambungkanWiFi();
+  clientTCP.setInsecure();
+  klienTelegram.setInsecure();
+
+  // Jam dari internet (WIB). Berjalan di latar belakang, tidak memblokir.
+  configTzTime(ZONA_WAKTU, NTP_1, NTP_2);
+
+  mulaiWebServer();
+
+  Serial.print("Live stream: ");
+  Serial.println(alamatHalamanStream());
+
+  Serial.println("Kalibrasi PIR, tunggu 30 detik...");
+  delay(WAKTU_KALIBRASI);
+
+  // Pasang interrupt SETELAH kalibrasi, supaya sensor yang belum stabil
+  // tidak langsung memicu notifikasi palsu.
+  adaGerakan = false;
+  attachInterrupt(digitalPinToInterrupt(PIR_PIN), isrGerakan, RISING);
+  Serial.println("Interrupt PIR aktif.");
+
+  // Ambil status awal dari server (kalau Admin sudah mengaturnya dari
+  // dashboard sebelum device ini menyala ulang), lalu lapor online.
+  sinkronPerintahDariServer();
+  kirimHeartbeat();
+  waktuHeartbeatTerakhir = millis();
+  waktuPollTerakhir      = millis();
+
+  // Mulai task server di inti 0 (loop() berjalan di inti 1).
+  xTaskCreatePinnedToCore(taskServer, "taskServer", 10240, NULL, 1, NULL, 0);
+
+  kirimPesanAktif();
+
+  Serial.println("Sistem siap. Waktu: " + teksWaktu());
+}
+
+// ===================================================
+// LOOP (inti 1): gerakan, foto, Telegram, WiFi.
+// Semua urusan server Laravel ada di taskServer (inti 0).
+// ===================================================
+void loop() {
+  // --- Koneksi sempat putus dan sekarang pulih? Beri tahu lewat Telegram ---
+  laporOnlineKembali();
+
+  // --- Deteksi gerakan ---
+  // Sumber utama: interrupt, menangkap gerakan singkat walau alat sedang
+  // sibuk. Level pin hanya dipakai kalau PICU_ULANG_SAAT_PIR_HIGH aktif.
+  bool gerakan = adaGerakan || (PICU_ULANG_SAAT_PIR_HIGH && digitalRead(PIR_PIN) == HIGH);
+
+  if (gerakan) {
+    adaGerakan = false;
+
+    bool jedaSelesai = (waktuFotoTerakhir == 0 || millis() - waktuFotoTerakhir > JEDA_ANTAR_FOTO);
+
+    // Kalau pirAktif == false, tidak terjadi apa pun -- sensor dianggap mati.
+    if (pirAktif && jedaSelesai) {
+      Serial.println(">> Gerakan terdeteksi");
+      waktuFotoTerakhir = millis();
+
+      // Catat waktu kejadian SEBELUM memotret.
+      String waktuTeks = teksWaktu();
+      String waktuIso  = isoWaktu();
+
+      uint8_t* foto[MAKS_FOTO_KEJADIAN];
+      size_t   panjang[MAKS_FOTO_KEJADIAN];
+      int n = ambilBeberapaFoto(foto, panjang, JUMLAH_FOTO_PER_KEJADIAN, JEDA_ANTAR_JEPRETAN);
+
+      if (n > 0) {
+        // 1) Dashboard: SALINAN foto paling tajam (file JPEG terbesar biasanya
+        //    paling banyak detail / paling tidak buram) masuk antrean upload.
+        int terbaik = 0;
+        for (int i = 1; i < n; i++) if (panjang[i] > panjang[terbaik]) terbaik = i;
+        uint8_t* salinan = (uint8_t*) (psramFound() ? ps_malloc(panjang[terbaik]) : malloc(panjang[terbaik]));
+        if (salinan) {
+          memcpy(salinan, foto[terbaik], panjang[terbaik]);
+          masukkanAntreanUpload(salinan, panjang[terbaik], waktuIso);   // milik antrean
+        }
+
+        // 2) Telegram: satu "kiriman" berisi semua foto kejadian ini.
+        KirimanTelegram* k = (KirimanTelegram*) malloc(sizeof(KirimanTelegram));
+        if (k) {
+          k->jumlah = n;
+          for (int i = 0; i < n; i++) { k->foto[i] = foto[i]; k->len[i] = panjang[i]; }
+          k->pertamaTerkirim = false;
+          k->tertunda = false;
+          strncpy(k->waktu, waktuTeks.c_str(), sizeof(k->waktu) - 1);
+          k->waktu[sizeof(k->waktu) - 1] = '\0';
+
+          if (kirimKejadianTelegram(k)) hapusKiriman(k);   // sukses -> bebaskan memori
+          else simpanKeAntreanTelegram(k);                  // gagal -> coba lagi nanti
+        } else {
+          for (int i = 0; i < n; i++) free(foto[i]);
+        }
+      } else {
+        Serial.println("Gagal mengambil gambar.");
+      }
+    }
+  }
+
+  // --- Kirim ulang kejadian Telegram yang tertunda ---
+  prosesAntreanTelegram();
+
+  // --- Cek pesan masuk dari Telegram ---
+  if (millis() - waktuCekPesanTerakhir > JEDA_CEK_PESAN) {
+    if (WiFi.status() == WL_CONNECTED) {
+      int jumlahPesan = bot.getUpdates(bot.last_message_received + 1);
+      while (jumlahPesan) {
+        prosesPesan(jumlahPesan);
+        jumlahPesan = bot.getUpdates(bot.last_message_received + 1);
+      }
+    }
+    waktuCekPesanTerakhir = millis();
+  }
+
+  // --- Pantau WiFi (tanpa memblokir) ---
+  if (millis() - waktuCekWifiTerakhir > JEDA_CEK_WIFI) {
+    cekWiFi();
+    waktuCekWifiTerakhir = millis();
+  }
+
+  delay(20);
+}
+
+// ===================================================
+// TASK SERVER (inti 0, latar belakang)
+// Mengurus SEMUA komunikasi ke Laravel: sinkron perintah, heartbeat,
+// dan antrean upload foto. Kalau server lambat / mati, hanya task ini
+// yang menunggu -- loop() (Telegram & gerakan) tetap jalan normal.
+// ===================================================
+void taskServer(void* param) {
+  bool uploadTerakhirGagal = false;
+  unsigned long waktuCobaUpload = 0;
+
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED && apiUrlValid) {
+
+      // 1. Diminta sinkron segera (perintah Telegram / WiFi baru tersambung)
+      if (mintaSinkronSegera) {
+        mintaSinkronSegera = false;
+        sinkronPerintahDariServer();   // kirim perubahan tertunda + ambil status
+        kirimHeartbeat();              // perbarui online & alamat stream
+        waktuPollTerakhir      = millis();
+        waktuHeartbeatTerakhir = millis();
+      }
+
+      // 2. Poll status dari dashboard. Saat server mati, jarang-jarang saja.
+      unsigned long jedaPoll = serverTerhubung ? JEDA_POLL_PERINTAH : JEDA_SERVER_MATI;
+      if (millis() - waktuPollTerakhir > jedaPoll) {
+        sinkronPerintahDariServer();
+        waktuPollTerakhir = millis();
+      }
+
+      // 3. Heartbeat berkala (dilewati saat server mati; poll yang mengecek).
+      if (serverTerhubung && millis() - waktuHeartbeatTerakhir > JEDA_HEARTBEAT) {
+        kirimHeartbeat();
+        waktuHeartbeatTerakhir = millis();
+      }
+
+      // 4. Antrean upload foto ke dashboard.
+      if (uploadSedangDiproses == NULL) {
+        ItemUpload* item = NULL;
+        if (xQueueReceive(antreanUpload, &item, 0) == pdTRUE) uploadSedangDiproses = item;
+      }
+
+      bool bolehCoba = !uploadTerakhirGagal || (millis() - waktuCobaUpload > JEDA_ULANG_UPLOAD);
+      // Jangan upload bersamaan dengan kirim Telegram (Telegram didahulukan).
+      if (uploadSedangDiproses != NULL && bolehCoba && !sedangKirimTelegram) {
+        ItemUpload* item = uploadSedangDiproses;
+        int kode = kirimMotionEventKeServer(item->data, item->len, item->waktuIso);
+
+        if (kode >= 200 && kode < 300) {
+          Serial.printf(">> Motion event tersimpan di dashboard (sisa antrean: %d).\n",
+                        (int) uxQueueMessagesWaiting(antreanUpload));
+          free(item->data);
+          free(item);
+          uploadSedangDiproses = NULL;
+          uploadTerakhirGagal = false;
+        } else if (kode >= 400 && kode < 500) {
+          // Ditolak permanen (data tidak valid / kunci salah) -> jangan diulang.
+          Serial.printf(">> Motion event DITOLAK server (kode %d), foto dibuang.\n", kode);
+          free(item->data);
+          free(item);
+          uploadSedangDiproses = NULL;
+          uploadTerakhirGagal = false;
+        } else {
+          uploadTerakhirGagal = true;
+          waktuCobaUpload = millis();
+          Serial.printf(">> Upload dashboard gagal, dicoba lagi dalam %lu detik (antrean: %d foto).\n",
+                        JEDA_ULANG_UPLOAD / 1000, jumlahAntreanUpload());
+        }
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+}
+
+// ===================================================
+// ANTREAN UPLOAD
+// ===================================================
+void masukkanAntreanUpload(uint8_t* data, size_t len, const String& waktuIso) {
+  if (!apiUrlValid || antreanUpload == NULL) {
+    free(data);
+    return;
+  }
+
+  ItemUpload* item = (ItemUpload*) malloc(sizeof(ItemUpload));
+  if (!item) {
+    free(data);
+    return;
+  }
+  item->data = data;
+  item->len  = len;
+  strncpy(item->waktuIso, waktuIso.c_str(), sizeof(item->waktuIso) - 1);
+  item->waktuIso[sizeof(item->waktuIso) - 1] = '\0';
+
+  if (xQueueSend(antreanUpload, &item, 0) != pdTRUE) {
+    // Penuh -> buang foto TERTUA supaya memori tidak habis.
+    ItemUpload* lama = NULL;
+    if (xQueueReceive(antreanUpload, &lama, 0) == pdTRUE && lama) {
+      free(lama->data);
+      free(lama);
+      Serial.println(">> Antrean upload penuh, foto tertua dibuang.");
+    }
+    if (xQueueSend(antreanUpload, &item, 0) != pdTRUE) {
+      free(item->data);
+      free(item);
+    }
+  }
+}
+
+int jumlahAntreanUpload() {
+  int n = antreanUpload ? (int) uxQueueMessagesWaiting(antreanUpload) : 0;
+  if (uploadSedangDiproses != NULL) n++;
+  return n;
+}
+
+// ===================================================
+// AMBIL BEBERAPA FOTO BERUNTUN
+// Dengan setelan default (foto = stream, VGA/12): buang satu frame lama,
+// ambil frame baru, salin. Stream TIDAK dijeda; kamera hanya dikunci
+// selama frame diambil (mutex yang sama dengan stream).
+//
+// Hanya kalau RESOLUSI_FOTO / KUALITAS_FOTO diatur BERBEDA dari stream,
+// stream dijeda dan kamera dikunci selama sensor pindah setelan. Mengubah
+// framesize di tengah stream mereset DMA kamera dan bisa memicu
+// "cam_hal: EV-EOF-OVF" lalu watchdog reset.
+// Hasil: jumlah foto yang berhasil. Pemanggil WAJIB free() setiap foto.
+// ===================================================
+int ambilBeberapaFoto(uint8_t** foto, size_t* panjang, int jumlah, uint32_t jeda) {
+  int berhasil = 0;
+
+  sensor_t* s = esp_camera_sensor_get();
+  bool gantiSetelan = fotoResolusiTinggi && s &&
+                      (RESOLUSI_FOTO != RESOLUSI_STREAM || KUALITAS_FOTO != KUALITAS_STREAM);
+  if (gantiSetelan) {
+    streamDijeda = true;
+    xSemaphoreTake(kameraMutex, portMAX_DELAY);
+    s->set_framesize(s, RESOLUSI_FOTO);
+    s->set_quality(s, KUALITAS_FOTO);
+  }
+
+  // Tanpa ganti setelan, kamera tetap dikunci -- tapi hanya selama frame
+  // diambil & disalin (sepersekian detik), jadi stream nyaris tidak terasa.
+  // Stream dan pemotretan tidak boleh memanggil esp_camera_fb_get()
+  // bersamaan (crash LoadProhibited).
+  if (!gantiSetelan) xSemaphoreTake(kameraMutex, portMAX_DELAY);
+
+  // Buang frame lama (mengendap di buffer / masih setelan stream).
+  int jumlahBuang = gantiSetelan ? 3 : 1;
+  for (int i = 0; i < jumlahBuang; i++) {
+    camera_fb_t* buang = esp_camera_fb_get();
+    if (buang) esp_camera_fb_return(buang);
+  }
+
+  for (int i = 0; i < jumlah; i++) {
+    if (i > 0) {
+      // Jeda antar jepretan tanpa memegang kamera, supaya stream tetap jalan.
+      if (!gantiSetelan) xSemaphoreGive(kameraMutex);
+      delay(jeda);
+      if (!gantiSetelan) xSemaphoreTake(kameraMutex, portMAX_DELAY);
+    }
+
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (!fb) continue;
+
+    uint8_t* salinan = (uint8_t*) (psramFound() ? ps_malloc(fb->len) : malloc(fb->len));
+    if (salinan) {
+      memcpy(salinan, fb->buf, fb->len);
+      foto[berhasil]    = salinan;
+      panjang[berhasil] = fb->len;
+      berhasil++;
+      Serial.printf("Foto %d: %ux%u, %u byte.\n", berhasil, (unsigned) fb->width,
+                    (unsigned) fb->height, (unsigned) fb->len);
+    } else {
+      Serial.println("Memori tidak cukup untuk menyalin foto.");
+    }
+    esp_camera_fb_return(fb);
+  }
+
+  if (gantiSetelan) {
+    s->set_framesize(s, RESOLUSI_STREAM);
+    s->set_quality(s, KUALITAS_STREAM);
+    xSemaphoreGive(kameraMutex);
+    streamDijeda = false;   // stream langsung jalan lagi
+  } else {
+    xSemaphoreGive(kameraMutex);
+  }
+
+  return berhasil;
+}
+
+// ===================================================
+// PROSES PESAN MASUK
+// ===================================================
+void prosesPesan(int jumlahPesan) {
+  for (int i = 0; i < jumlahPesan; i++) {
+    String idPengirim = String(bot.messages[i].chat_id);
+
+    if (idPengirim != CHAT_ID) {
+      bot.sendMessage(idPengirim, "Maaf, Anda tidak memiliki akses.", "");
+      continue;
+    }
+
+    String teks = bot.messages[i].text;
+    Serial.println("Perintah masuk: " + teks);
+
+    if (teks == "/start") {
+      String pesan = "Bot monitoring ruangan ESP32-CAM.\n\n";
+      pesan += "/photo  : Ambil foto\n";
+      pesan += "/ip     : Alamat live stream\n";
+      pesan += "/flash  : Nyalakan / matikan flash LED\n";
+      pesan += "/piron  : Aktifkan sensor PIR\n";
+      pesan += "/piroff : Matikan sensor PIR\n";
+      pesan += "/status : Status sensor, server, sinyal, antrean, jam\n\n";
+      pesan += "Status PIR dan flash ini juga tersinkron dua arah ke dashboard web.";
+      bot.sendMessage(CHAT_ID, pesan, "");
+    }
+
+    else if (teks == "/photo") {
+      uint8_t* foto[1];
+      size_t   panjang[1];
+      String waktuTeks = teksWaktu();
+      if (ambilBeberapaFoto(foto, panjang, 1, 0) == 1) {
+        kirimFotoTelegram(foto[0], panjang[0], "Foto diambil atas permintaan.\n" + waktuTeks);
+        free(foto[0]);
+      } else {
+        bot.sendMessage(CHAT_ID, "Gagal mengambil foto.", "");
+      }
+    }
+
+    else if (teks == "/ip") {
+      bot.sendMessage(CHAT_ID, "Live stream: " + alamatHalamanStream(), "");
+    }
+
+    else if (teks == "/flash") {
+      flashMenyala = !flashMenyala;
+      digitalWrite(FLASH_LED_PIN, flashMenyala ? HIGH : LOW);
+      flashBelumTerkirim = true;
+      mintaSinkronSegera = true;   // taskServer yang melapor ke dashboard
+      bot.sendMessage(CHAT_ID, flashMenyala ? "Flash LED dinyalakan." : "Flash LED dimatikan.", "");
+    }
+
+    else if (teks == "/piron" || teks == "/piroff") {
+      pirAktif = (teks == "/piron");
+      if (pirAktif) waktuFotoTerakhir = millis();  // jangan langsung memotret saat baru dinyalakan
+      modeBelumTerkirim = true;
+      mintaSinkronSegera = true;   // taskServer yang melapor ke dashboard
+      bot.sendMessage(CHAT_ID, pirAktif ? "Sensor PIR diaktifkan." : "Sensor PIR dimatikan.", "");
+    }
+
+    else if (teks == "/status") {
+      String pesan = "Waktu: " + teksWaktu();
+      pesan += "\nSensor PIR: " + String(pirAktif ? "AKTIF" : "MATI");
+      if (modeBelumTerkirim) pesan += " (belum tersinkron ke server)";
+      pesan += "\nFlash LED: " + String(flashMenyala ? "NYALA" : "MATI");
+      if (flashBelumTerkirim) pesan += " (belum tersinkron ke server)";
+      pesan += "\nServer SI-JAGA: " + String(serverTerhubung ? "terhubung" : "TIDAK terhubung");
+      pesan += "\nAntrean upload dashboard: " + String(jumlahAntreanUpload()) + " foto";
+      pesan += "\nAntrean Telegram tertunda: " + String(jumlahAntreanTelegram) + " kejadian";
+      pesan += "\nSinyal WiFi: " + String(WiFi.RSSI()) + " dBm";
+      pesan += "\nLive stream: " + String(jumlahPenonton > 0 ? String(jumlahPenonton) + " penonton" : "tidak dibuka");
+      pesan += "\nMenyala selama: " + teksLamaMenyala();
+      pesan += "\nPenyebab menyala terakhir: " + teksAlasanRestart;
+      pesan += "\nMemori bebas: " + String(ESP.getFreeHeap() / 1024) + " KB (PSRAM " +
+               String(ESP.getFreePsram() / 1024) + " KB)";
+      bot.sendMessage(CHAT_ID, pesan, "");
+    }
+
+    else {
+      bot.sendMessage(CHAT_ID, "Perintah tidak dikenal. Ketik /start untuk daftar perintah.", "");
+    }
+  }
+}
+
+// ===================================================
+// KIRIM KE TELEGRAM
+// ===================================================
+static const char* BATAS_TG = "ESP32CAMBOUNDARY7MA4YWxkTrZu0gW";
+
+// Satu bagian teks multipart (chat_id, caption, media, ...).
+static String bagianTeks(const String& nama, const String& nilai) {
+  String s = "--" + String(BATAS_TG) + "\r\n";
+  s += "Content-Disposition: form-data; name=\"" + nama + "\"\r\n\r\n";
+  s += nilai + "\r\n";
+  return s;
+}
+
+// Escape teks untuk dimasukkan ke dalam JSON (caption album).
+static String escapeJson(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if (c == '"' || c == '\\') { out += '\\'; out += c; }
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') { }
+    else out += c;
+  }
+  return out;
+}
+
+// Baca satu baris balasan HTTP dengan batas waktu.
+static bool bacaBaris(WiFiClientSecure& c, String& baris, unsigned long batasWaktu) {
+  baris = "";
+  while (millis() < batasWaktu) {
+    while (c.available()) {
+      char ch = (char) c.read();
+      if (ch == '\n') { baris.trim(); return true; }
+      if (baris.length() < 512) baris += ch;
+    }
+    if (!c.connected()) return false;
+    delay(2);
+  }
+  return false;
+}
+
+// Catat penyebab gagal terhubung ke Telegram: jaringan atau memori?
+static void logGagalTelegram() {
+  char pesanError[100] = {0};
+  int kodeError = klienTelegram.lastError(pesanError, sizeof(pesanError));
+  Serial.printf("Gagal terhubung ke server Telegram. WiFi: %s, sinyal: %d dBm, "
+                "memori internal bebas: %u byte (blok terbesar %u), error TLS %d: %s\n",
+                WiFi.status() == WL_CONNECTED ? "tersambung" : "PUTUS",
+                (int) WiFi.RSSI(),
+                (unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                (unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                kodeError, pesanError);
+}
+
+// Kirim permintaan multipart ke Telegram lewat koneksi keep-alive.
+// Kalau koneksi lama ternyata sudah ditutup server, otomatis sambung
+// ulang dan coba sekali lagi.
+bool kirimTelegramMultipart(const String& metode, const String& teks,
+                            const uint8_t* const* data, const size_t* len,
+                            const String* namaField, int jumlah) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi terputus, foto Telegram tidak terkirim.");
+    tandaiTerputus();
+    return false;
+  }
+
+  // Header tiap berkas foto.
+  String kepalaBerkas[10];
+  size_t totalPanjang = teks.length();
+  for (int i = 0; i < jumlah; i++) {
+    kepalaBerkas[i]  = "--" + String(BATAS_TG) + "\r\n";
+    kepalaBerkas[i] += "Content-Disposition: form-data; name=\"" + namaField[i] +
+                       "\"; filename=\"" + namaField[i] + ".jpg\"\r\n";
+    kepalaBerkas[i] += "Content-Type: image/jpeg\r\n\r\n";
+    totalPanjang += kepalaBerkas[i].length() + len[i] + 2;   // +2 = "\r\n" setelah data
+  }
+  String penutup = "--" + String(BATAS_TG) + "--\r\n";
+  totalPanjang += penutup.length();
+
+  unsigned long mulai = millis();
+
+  for (int percobaan = 0; percobaan < 2; percobaan++) {
+    bool koneksiBaru = false;
+    bool basi = !PAKAI_KEEP_ALIVE_TELEGRAM ||
+                (millis() - waktuTelegramTerakhir > IDLE_MAKS_TELEGRAM);
+    if (!klienTelegram.connected() || basi) {
+      klienTelegram.stop();
+      // Tanpa batas waktu khusus -> memakai batas bawaan library (sabar),
+      // sama seperti kode lama.
+      if (!klienTelegram.connect("api.telegram.org", 443)) {
+        logGagalTelegram();
+        tandaiTerputus();
+        return false;
+      }
+      koneksiBaru = true;
+    }
+
+    // --- Tulis permintaan ---
+    String header = "POST /bot" + BOT_TOKEN + "/" + metode + " HTTP/1.1\r\n";
+    header += "Host: api.telegram.org\r\n";
+    header += "Content-Type: multipart/form-data; boundary=" + String(BATAS_TG) + "\r\n";
+    header += "Content-Length: " + String((unsigned long) totalPanjang) + "\r\n";
+    header += PAKAI_KEEP_ALIVE_TELEGRAM ? "Connection: keep-alive\r\n\r\n"
+                                        : "Connection: close\r\n\r\n";
+
+    bool tulisOk = (klienTelegram.print(header) > 0) && (klienTelegram.print(teks) > 0);
+    for (int i = 0; tulisOk && i < jumlah; i++) {
+      tulisOk = klienTelegram.print(kepalaBerkas[i]) > 0;
+      const uint8_t* ptr = data[i];
+      size_t sisa = len[i];
+      while (tulisOk && sisa > 0) {
+        size_t potongan = (sisa > 4096) ? 4096 : sisa;
+        size_t terkirim = klienTelegram.write(ptr, potongan);
+        if (terkirim == 0) { tulisOk = false; break; }
+        ptr  += terkirim;
+        sisa -= terkirim;
+      }
+      if (tulisOk) tulisOk = klienTelegram.print("\r\n") > 0;
+    }
+    if (tulisOk) tulisOk = klienTelegram.print(penutup) > 0;
+
+    if (!tulisOk) {
+      klienTelegram.stop();
+      if (koneksiBaru) break;       // koneksi baru pun gagal -> menyerah
+      Serial.println("(Koneksi Telegram lama sudah tertutup, sambung ulang...)");
+      continue;                     // koneksi lama basi -> coba sekali lagi
+    }
+
+    // --- Baca balasan: baris status, header, lalu isi sesuai Content-Length ---
+    unsigned long batasWaktu = millis() + TIMEOUT_TELEGRAM;
+    String baris;
+    if (!bacaBaris(klienTelegram, baris, batasWaktu)) {
+      klienTelegram.stop();
+      if (koneksiBaru) break;
+      Serial.println("(Koneksi Telegram lama sudah tertutup, sambung ulang...)");
+      continue;
+    }
+
+    int kode = 0;
+    int spasi = baris.indexOf(' ');
+    if (spasi > 0) kode = baris.substring(spasi + 1, spasi + 4).toInt();
+
+    long panjangIsi = -1;
+    bool serverTutup = false;
+    while (bacaBaris(klienTelegram, baris, batasWaktu)) {
+      if (baris.length() == 0) break;   // akhir header
+      String kecil = baris;
+      kecil.toLowerCase();
+      if (kecil.startsWith("content-length:")) panjangIsi = kecil.substring(15).toInt();
+      if (kecil.startsWith("connection:") && kecil.indexOf("close") > 0) serverTutup = true;
+    }
+
+    // Isi balasan: simpan secukupnya (cukup untuk cek "ok":true).
+    String isi;
+    long terbaca = 0;
+    while (millis() < batasWaktu && (panjangIsi < 0 || terbaca < panjangIsi)) {
+      while (klienTelegram.available() && (panjangIsi < 0 || terbaca < panjangIsi)) {
+        char ch = (char) klienTelegram.read();
+        terbaca++;
+        if (isi.length() < 300) isi += ch;
+      }
+      if (!klienTelegram.available() && !klienTelegram.connected()) break;   // putus di tengah
+      if (panjangIsi < 0 && !klienTelegram.available()) { delay(20); if (!klienTelegram.available()) break; }
+      delay(2);
+    }
+
+    // Tanpa keep-alive, tanpa Content-Length, atau server minta tutup -> tutup.
+    if (!PAKAI_KEEP_ALIVE_TELEGRAM || panjangIsi < 0 || serverTutup) klienTelegram.stop();
+
+    bool ok = (kode == 200) && (isi.indexOf("\"ok\":true") >= 0);
+    if (ok) {
+      waktuTelegramTerakhir = millis();
+      Serial.printf("%s terkirim (%d foto, %lu ms%s).\n",
+                    metode == "sendMediaGroup" ? "Album Telegram" : "Foto Telegram",
+                    jumlah, millis() - mulai, koneksiBaru ? ", koneksi baru" : ", koneksi dipakai ulang");
+    } else {
+      Serial.printf("Pengiriman Telegram gagal (kode %d). Balasan: %s\n", kode, isi.c_str());
+    }
+    return ok;
+  }
+
+  Serial.println("Pengiriman Telegram gagal (koneksi).");
+  tandaiTerputus();
+  return false;
+}
+
+// Satu foto (sendPhoto). Selama pengiriman, stream diperlambat.
+bool kirimFotoTelegram(const uint8_t* data, size_t len, const String& keterangan) {
+  sedangKirimTelegram = true;
+  if (jumlahPenonton > 0) Serial.println("(Stream sedang dibuka -> WiFi dibagi dengan stream)");
+
+  String teks = bagianTeks("chat_id", CHAT_ID);
+  if (keterangan.length() > 0) teks += bagianTeks("caption", keterangan);
+
+  const uint8_t* daftarData[1] = { data };
+  size_t daftarLen[1] = { len };
+  String nama[1] = { "photo" };
+  bool ok = kirimTelegramMultipart("sendPhoto", teks, daftarData, daftarLen, nama, 1);
+
+  sedangKirimTelegram = false;
+  return ok;
+}
+
+// Beberapa foto sebagai satu album (sendMediaGroup, 2-10 foto).
+// Caption hanya dipasang di foto pertama (tampil di bawah album).
+bool kirimAlbumTelegram(uint8_t** foto, size_t* panjang, int jumlah, const String& keterangan) {
+  if (jumlah < 2) return kirimFotoTelegram(foto[0], panjang[0], keterangan);
+  if (jumlah > 10) jumlah = 10;
+
+  sedangKirimTelegram = true;
+  if (jumlahPenonton > 0) Serial.println("(Stream sedang dibuka -> WiFi dibagi dengan stream)");
+
+  String media = "[";
+  String nama[10];
+  const uint8_t* daftarData[10];
+  size_t daftarLen[10];
+  for (int i = 0; i < jumlah; i++) {
+    nama[i] = "foto" + String(i);
+    daftarData[i] = foto[i];
+    daftarLen[i] = panjang[i];
+    if (i > 0) media += ",";
+    media += "{\"type\":\"photo\",\"media\":\"attach://" + nama[i] + "\"";
+    if (i == 0 && keterangan.length() > 0) media += ",\"caption\":\"" + escapeJson(keterangan) + "\"";
+    media += "}";
+  }
+  media += "]";
+
+  String teks = bagianTeks("chat_id", CHAT_ID) + bagianTeks("media", media);
+  bool ok = kirimTelegramMultipart("sendMediaGroup", teks, daftarData, daftarLen, nama, jumlah);
+
+  sedangKirimTelegram = false;
+  return ok;
+}
+
+// ===================================================
+// KIRIM SATU KEJADIAN KE TELEGRAM
+// 1. Foto pertama dikirim sendiri (notifikasi secepat mungkin).
+// 2. Foto sisanya menyusul (album kalau >= 2, foto tunggal kalau 1).
+// Kalau di tengah jalan gagal, bagian yang sudah terkirim dicatat supaya
+// saat dicoba ulang tidak terkirim dobel. Hasil: true kalau semua sampai.
+// ===================================================
+bool kirimKejadianTelegram(KirimanTelegram* k) {
+  String tandaTertunda = k->tertunda ? "[TERTUNDA - koneksi sempat putus]\n" : "";
+
+  if (!k->pertamaTerkirim) {
+    String caption = tandaTertunda + "Gerakan terdeteksi!\n" + String(k->waktu);
+    if (k->jumlah > 1) caption += "\n(+" + String(k->jumlah - 1) + " foto menyusul)";
+    if (!kirimFotoTelegram(k->foto[0], k->len[0], caption)) return false;
+    k->pertamaTerkirim = true;
+  }
+
+  int sisa = k->jumlah - 1;
+  if (sisa <= 0) return true;
+
+  String captionSusulan = tandaTertunda + "Foto tambahan - " + String(k->waktu);
+  if (sisa >= 2) return kirimAlbumTelegram(&k->foto[1], &k->len[1], sisa, captionSusulan);
+  return kirimFotoTelegram(k->foto[1], k->len[1], captionSusulan);
+}
+
+void hapusKiriman(KirimanTelegram* k) {
+  if (!k) return;
+  for (int i = 0; i < k->jumlah; i++) free(k->foto[i]);
+  free(k);
+}
+
+// Simpan kejadian yang gagal terkirim. Kalau antrean penuh, buang yang tertua.
+void simpanKeAntreanTelegram(KirimanTelegram* k) {
+  k->tertunda = true;
+  if (jumlahAntreanTelegram >= ANTREAN_TELEGRAM_MAKS) {
+    Serial.println(">> Antrean Telegram penuh, kejadian tertua dibuang.");
+    hapusKiriman(antreanTelegram[0]);
+    for (int i = 1; i < jumlahAntreanTelegram; i++) antreanTelegram[i - 1] = antreanTelegram[i];
+    jumlahAntreanTelegram--;
+  }
+  antreanTelegram[jumlahAntreanTelegram++] = k;
+  waktuCobaTelegramTerakhir = millis();
+  Serial.printf(">> Kiriman Telegram disimpan, dicoba lagi dalam %lu detik (antrean: %d kejadian).\n",
+                JEDA_ULANG_TELEGRAM / 1000, jumlahAntreanTelegram);
+}
+
+// Coba kirim ulang kejadian tertunda (yang tertua dulu). Berhenti di
+// kegagalan pertama supaya loop() tidak tertahan lama saat internet putus.
+void prosesAntreanTelegram() {
+  if (jumlahAntreanTelegram == 0) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (millis() - waktuCobaTelegramTerakhir < JEDA_ULANG_TELEGRAM) return;
+
+  while (jumlahAntreanTelegram > 0) {
+    KirimanTelegram* k = antreanTelegram[0];
+    if (!kirimKejadianTelegram(k)) {
+      waktuCobaTelegramTerakhir = millis();
+      Serial.printf(">> Kirim ulang Telegram masih gagal (antrean: %d kejadian).\n", jumlahAntreanTelegram);
+      return;
+    }
+    hapusKiriman(k);
+    for (int i = 1; i < jumlahAntreanTelegram; i++) antreanTelegram[i - 1] = antreanTelegram[i];
+    jumlahAntreanTelegram--;
+    Serial.printf(">> Kejadian tertunda berhasil dikirim (sisa antrean: %d).\n", jumlahAntreanTelegram);
+  }
+}
+
+// ===================================================
+// PESAN "ALAT ONLINE KEMBALI"
+// ===================================================
+// Dipanggil setiap kali WiFi putus atau kiriman ke Telegram gagal.
+// Hanya mencatat saat PERTAMA putus (supaya durasinya benar).
+void tandaiTerputus() {
+  if (perluLaporOnline) return;
+  perluLaporOnline = true;
+  waktuMulaiPutus = millis();
+  strncpy(teksMulaiPutus, teksWaktu().c_str(), sizeof(teksMulaiPutus) - 1);
+  teksMulaiPutus[sizeof(teksMulaiPutus) - 1] = '\0';
+  waktuCobaLaporOnline = millis();
+}
+
+// Coba kirim pesan "online kembali" (tiap 20 detik sampai berhasil).
+// Dikirim SEBELUM kejadian tertunda, supaya urutannya jelas di Telegram.
+void laporOnlineKembali() {
+  if (!perluLaporOnline) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (millis() - waktuCobaLaporOnline < JEDA_ULANG_TELEGRAM) return;
+  waktuCobaLaporOnline = millis();
+
+  unsigned long lamaDetik = (millis() - waktuMulaiPutus) / 1000;
+
+  // Putus singkat (sinyal lemah sesaat) tidak perlu dilaporkan. Kejadian
+  // yang sempat tertunda tetap dikirim, dengan tanda TERTUNDA di caption.
+  if (lamaDetik * 1000UL < BATAS_LAPOR_PUTUS) {
+    perluLaporOnline = false;
+    waktuCobaTelegramTerakhir = 0;
+    Serial.printf(">> Koneksi pulih setelah +/- %lu detik (tidak dilaporkan, di bawah %lu detik).\n",
+                  lamaDetik, BATAS_LAPOR_PUTUS / 1000);
+    return;
+  }
+
+  String lama = (lamaDetik >= 60) ? String(lamaDetik / 60) + " menit " + String(lamaDetik % 60) + " detik"
+                                  : String(lamaDetik) + " detik";
+
+  String pesan = "Alat online kembali.\n";
+  pesan += "Sempat terputus sejak: " + String(teksMulaiPutus) + "\n";
+  pesan += "Lama terputus: +/- " + lama + "\n";
+  pesan += "Sekarang: " + teksWaktu() + "\n";
+  pesan += "Sinyal WiFi: " + String(WiFi.RSSI()) + " dBm\n";
+  if (jumlahAntreanTelegram > 0) {
+    pesan += "Kejadian tertunda: " + String(jumlahAntreanTelegram) + " (dikirim sesudah pesan ini)";
+  } else {
+    pesan += "Tidak ada kejadian yang tertunda.";
+  }
+
+  if (bot.sendMessage(CHAT_ID, pesan, "")) {
+    perluLaporOnline = false;
+    Serial.println(">> Pesan 'Alat online kembali' terkirim (terputus +/- " + lama + ").");
+    // Kejadian tertunda langsung dicoba kirim setelah pesan ini.
+    waktuCobaTelegramTerakhir = 0;
+  } else {
+    Serial.println(">> Pesan 'Alat online kembali' belum bisa dikirim, dicoba lagi 20 detik lagi.");
+  }
+}
+
+// ===================================================
+// URAIKAN API_BASE_URL -> apiHost, apiPort, apiPath
+// Contoh: "http://192.168.1.243/sikabis/public/api" -> host 192.168.1.243,
+//         port 80, path "/sikabis/public/api"
+// ===================================================
+bool uraiApiBaseUrl() {
+  String u = API_BASE_URL;
+  u.trim();
+  if (!u.startsWith("http://")) return false;
+  u = u.substring(7);
+
+  int garis = u.indexOf('/');
+  String hostPort = (garis >= 0) ? u.substring(0, garis) : u;
+  apiPath = (garis >= 0) ? u.substring(garis) : "";
+  while (apiPath.endsWith("/")) apiPath.remove(apiPath.length() - 1);
+
+  int titikDua = hostPort.indexOf(':');
+  if (titikDua >= 0) {
+    apiHost = hostPort.substring(0, titikDua);
+    apiPort = (uint16_t) hostPort.substring(titikDua + 1).toInt();
+  } else {
+    apiHost = hostPort;
+    apiPort = 80;
+  }
+  return apiHost.length() > 0 && apiPort > 0;
+}
+
+// ===================================================
+// KIRIM MOTION EVENT (FOTO + MODE PIR + WAKTU) KE BACKEND LARAVEL
+// Endpoint: POST {API_BASE_URL}/device/motion-event
+// Auth    : header X-Device-Key
+// Hasil   : kode HTTP (2xx sukses), atau 0 kalau tidak ada jawaban.
+// Dipanggil dari taskServer (latar belakang).
+// ===================================================
+int kirimMotionEventKeServer(const uint8_t* data, size_t len, const char* waktuIso) {
+  if (WiFi.status() != WL_CONNECTED || !apiUrlValid) return 0;
+
+  WiFiClient klien;
+  if (!klien.connect(apiHost.c_str(), apiPort, TIMEOUT_KONEK_SERVER)) {
+    Serial.println("Upload motion-event gagal: server tidak bisa dihubungi.");
+    serverTerhubung = false;
+    return 0;
+  }
+
+  String batas = "SIJAGADEVICEBOUNDARY";
+
+  String kepala = "--" + batas + "\r\n";
+  kepala += "Content-Disposition: form-data; name=\"device_id\"\r\n\r\n";
+  kepala += String(DEVICE_ID) + "\r\n";
+  kepala += "--" + batas + "\r\n";
+  kepala += "Content-Disposition: form-data; name=\"pir_mode\"\r\n\r\n";
+  kepala += modePirUntukServer() + "\r\n";
+  if (waktuIso && waktuIso[0] != '\0') {
+    kepala += "--" + batas + "\r\n";
+    kepala += "Content-Disposition: form-data; name=\"captured_at\"\r\n\r\n";
+    kepala += String(waktuIso) + "\r\n";
+  }
+  kepala += "--" + batas + "\r\n";
+  kepala += "Content-Disposition: form-data; name=\"photo\"; filename=\"motion.jpg\"\r\n";
+  kepala += "Content-Type: image/jpeg\r\n\r\n";
+
+  String ekor = "\r\n--" + batas + "--\r\n";
+  size_t totalPanjang = kepala.length() + len + ekor.length();
+
+  String header = "POST " + apiPath + "/device/motion-event HTTP/1.1\r\n";
+  header += "Host: " + apiHost + ":" + String(apiPort) + "\r\n";
+  header += "X-Device-Key: " + String(DEVICE_API_KEY) + "\r\n";
+  header += "Accept: application/json\r\n";
+  header += "Content-Type: multipart/form-data; boundary=" + batas + "\r\n";
+  header += "Content-Length: " + String((unsigned long) totalPanjang) + "\r\n";
+  header += "Connection: close\r\n\r\n";
+
+  klien.print(header);
+  klien.print(kepala);
+
+  const uint8_t* ptr = data;
+  size_t sisa = len;
+  while (sisa > 0) {
+    size_t potongan = (sisa > 4096) ? 4096 : sisa;
+    size_t terkirim = klien.write(ptr, potongan);
+    if (terkirim == 0) {
+      Serial.println("Upload motion-event terputus di tengah jalan.");
+      klien.stop();
+      serverTerhubung = false;
+      return 0;
+    }
+    ptr += terkirim;
+    sisa -= terkirim;
+  }
+  klien.print(ekor);
+
+  // Tunggu baris status, contoh: "HTTP/1.1 201 Created"
+  unsigned long mulai = millis();
+  while (klien.connected() && !klien.available() && millis() - mulai < TIMEOUT_UPLOAD) {
+    delay(10);
+  }
+  if (!klien.available()) {
+    Serial.println("Upload motion-event: server tidak membalas (timeout).");
+    klien.stop();
+    serverTerhubung = false;
+    return 0;
+  }
+
+  String barisStatus = klien.readStringUntil('\n');
+  int kodeStatus = 0;
+  int spasi = barisStatus.indexOf(' ');
+  if (spasi > 0) kodeStatus = barisStatus.substring(spasi + 1, spasi + 4).toInt();
+
+  bool berhasil = (kodeStatus >= 200 && kodeStatus < 300);
+  serverTerhubung = (kodeStatus > 0);
+
+  if (!berhasil) {
+    Serial.printf("Upload motion-event gagal, kode HTTP: %d\n", kodeStatus);
+    // Tampilkan sebagian balasan server untuk bantu debugging.
+    String sisaBalasan = "";
+    unsigned long t = millis();
+    while ((klien.connected() || klien.available()) && sisaBalasan.length() < 600 && millis() - t < 2000) {
+      while (klien.available() && sisaBalasan.length() < 600) sisaBalasan += (char) klien.read();
+      delay(5);
+    }
+    Serial.println(sisaBalasan);
+  }
+
+  klien.stop();
+  return kodeStatus;
+}
+
+// ===================================================
+// HEARTBEAT: lapor status online + perubahan dari Telegram ke server
+// Endpoint: POST {API_BASE_URL}/device/heartbeat
+//
+// pir_mode / flash_on HANYA disertakan kalau ada perubahan dari Telegram
+// yang belum sampai ke server (modeBelumTerkirim / flashBelumTerkirim).
+// Penanda baru dihapus setelah server membalas sukses (2xx).
+// ===================================================
+void kirimHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED || !apiUrlValid) {
+    serverTerhubung = false;
+    return;
+  }
+
+  bool kirimMode  = modeBelumTerkirim;
+  bool kirimFlash = flashBelumTerkirim;
+
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/device/heartbeat";
+
+  http.begin(url);
+  http.setConnectTimeout(TIMEOUT_KONEK_SERVER);
+  http.setTimeout(TIMEOUT_BACA_SERVER);
+  http.addHeader("X-Device-Key", DEVICE_API_KEY);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Accept", "application/json");
+
+  // stream_url disertakan di setiap heartbeat supaya kalau IP berubah
+  // karena DHCP, dashboard web otomatis ikut update.
+  String body = "{\"device_id\":\"" + String(DEVICE_ID) + "\"";
+  body += ",\"stream_url\":\"" + alamatStream() + "\"";
+  if (kirimFlash) {
+    body += ",\"flash_on\":" + String(flashMenyala ? "true" : "false");
+  }
+  if (kirimMode) {
+    body += ",\"pir_mode\":\"" + modePirUntukServer() + "\"";
+  }
+  body += "}";
+
+  int kodeStatus = http.POST(body);
+  bool berhasil = (kodeStatus >= 200 && kodeStatus < 300);
+  serverTerhubung = berhasil;
+
+  if (berhasil) {
+    if (kirimMode)  modeBelumTerkirim  = false;
+    if (kirimFlash) flashBelumTerkirim = false;
+  } else {
+    Serial.printf("Heartbeat gagal, kode HTTP: %d\n", kodeStatus);
+  }
+
+  http.end();
+}
+
+// ===================================================
+// POLL: ambil status PIR & flash terbaru dari dashboard
+// Endpoint: GET {API_BASE_URL}/device/command?device_id=...
+// Balasan : {"pir_mode":"ON"|"OFF", "flash_on":true|false}
+// ===================================================
+void sinkronPerintahDariServer() {
+  if (WiFi.status() != WL_CONNECTED || !apiUrlValid) {
+    serverTerhubung = false;
+    return;
+  }
+
+  // Kalau ada perubahan dari Telegram yang belum sampai ke server,
+  // kirim dulu. Kalau masih gagal, JANGAN ambil status dari server.
+  if (modeBelumTerkirim || flashBelumTerkirim) {
+    kirimHeartbeat();
+    if (!serverTerhubung) return;
+  }
+
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/device/command?device_id=" + String(DEVICE_ID);
+
+  http.begin(url);
+  http.setConnectTimeout(TIMEOUT_KONEK_SERVER);
+  http.setTimeout(TIMEOUT_BACA_SERVER);
+  http.addHeader("X-Device-Key", DEVICE_API_KEY);
+  http.addHeader("Accept", "application/json");
+
+  int kodeStatus = http.GET();
+  if (kodeStatus == 200) {
+    serverTerhubung = true;
+    String body = http.getString();
+
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+      Serial.println("Balasan /device/command bukan JSON yang valid: " + body);
+    } else {
+      const char* modeBaru = doc["pir_mode"];
+      if (modeBaru && !modeBelumTerkirim) {
+        String mode = modeBaru;
+        mode.trim();
+        if (mode.equalsIgnoreCase("ON") || mode.equalsIgnoreCase("OFF")) {
+          bool aktifBaru = mode.equalsIgnoreCase("ON");
+          if (aktifBaru != pirAktif) {
+            pirAktif = aktifBaru;
+            if (pirAktif) waktuFotoTerakhir = millis();
+            Serial.println(">> Status PIR disinkronkan dari dashboard: " + String(pirAktif ? "AKTIF" : "MATI"));
+          }
+        } else {
+          Serial.println(">> pir_mode dari server tidak dikenal: \"" + mode + "\" (harus ON/OFF). Diabaikan.");
+        }
+      }
+
+      if (doc.containsKey("flash_on") && !flashBelumTerkirim) {
+        bool flashBaru = doc["flash_on"];
+        if (flashBaru != flashMenyala) {
+          flashMenyala = flashBaru;
+          digitalWrite(FLASH_LED_PIN, flashMenyala ? HIGH : LOW);
+          Serial.println(">> Flash LED disinkronkan dari dashboard: " + String(flashMenyala ? "NYALA" : "MATI"));
+        }
+      }
+    }
+  } else {
+    serverTerhubung = false;
+    Serial.printf("Poll command gagal, kode HTTP: %d\n", kodeStatus);
+  }
+
+  http.end();
+}
+
+// ===================================================
+// INISIALISASI KAMERA
+// ===================================================
+bool mulaiKamera() {
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer   = LEDC_TIMER_0;
+  config.pin_d0       = Y2_GPIO_NUM;
+  config.pin_d1       = Y3_GPIO_NUM;
+  config.pin_d2       = Y4_GPIO_NUM;
+  config.pin_d3       = Y5_GPIO_NUM;
+  config.pin_d4       = Y6_GPIO_NUM;
+  config.pin_d5       = Y7_GPIO_NUM;
+  config.pin_d6       = Y8_GPIO_NUM;
+  config.pin_d7       = Y9_GPIO_NUM;
+  config.pin_xclk     = XCLK_GPIO_NUM;
+  config.pin_pclk     = PCLK_GPIO_NUM;
+  config.pin_vsync    = VSYNC_GPIO_NUM;
+  config.pin_href     = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn     = PWDN_GPIO_NUM;
+  config.pin_reset    = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  if (psramFound()) {
+    // Buffer dibuat seukuran RESOLUSI_FOTO (yang terbesar), lalu setelah
+    // init kamera diturunkan ke RESOLUSI_STREAM untuk live stream.
+    config.frame_size   = RESOLUSI_FOTO;
+    config.jpeg_quality = KUALITAS_FOTO;
+    config.fb_count     = 2;
+    config.grab_mode    = CAMERA_GRAB_LATEST;
+    config.fb_location  = CAMERA_FB_IN_PSRAM;
+  } else {
+    config.frame_size   = FRAMESIZE_CIF;
+    config.jpeg_quality = 14;
+    config.fb_count     = 1;
+    config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
+    config.fb_location  = CAMERA_FB_IN_DRAM;
+  }
+
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x\n", err);
+    return false;
+  }
+
+  if (psramFound()) {
+    sensor_t* s = esp_camera_sensor_get();
+    if (s) {
+      // Hanya kalau memang beda: set_framesize mereset DMA kamera tepat
+      // setelah init dan memunculkan "cam_hal: EV-EOF-OVF" saat boot.
+      if (RESOLUSI_STREAM != RESOLUSI_FOTO) s->set_framesize(s, RESOLUSI_STREAM);
+      if (KUALITAS_STREAM != KUALITAS_FOTO) s->set_quality(s, KUALITAS_STREAM);
+      fotoResolusiTinggi = true;
+    }
+  } else {
+    Serial.println("PSRAM tidak ditemukan: foto memakai resolusi CIF (400x296), album & antrean terbatas.");
+  }
+
+  Serial.println("Kamera siap.");
+  return true;
+}
+
+// ===================================================
+// KONEKSI WIFI (saat boot -- boleh menunggu maks. 20 detik)
+// ===================================================
+void sambungkanWiFi() {
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);   // ESP32 menyambung ulang sendiri kalau putus
+  WiFi.begin(ssid, password);
+  WiFi.setSleep(false);
+
+  // Daya pancar WiFi MAKSIMAL -> sinyal paling kuat, kirim foto paling cepat.
+  // Butuh sumber daya yang kuat (charger 5V 2A). Kalau alat kembali sering
+  // crash / restart saat mengirim, turunkan ke WIFI_POWER_15dBm.
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+
+  Serial.print("Menyambung ke WiFi");
+  unsigned long mulai = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - mulai < 20000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("WiFi tersambung. IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Gagal menyambung WiFi. Akan dicoba terus di latar belakang.");
+    wifiSedangPutus = true;
+  }
+}
+
+// ===================================================
+// PANTAU WIFI SAAT BERJALAN (tidak memblokir)
+// Kalau putus: minta sambung ulang lalu langsung lanjut kerja.
+// Kalau sudah tersambung lagi: minta taskServer segera lapor ke server
+// supaya alamat stream (IP bisa berubah) di dashboard ikut update.
+// ===================================================
+void cekWiFi() {
+  if (WiFi.status() != WL_CONNECTED) {
+    if (!wifiSedangPutus) {
+      Serial.println(">> WiFi terputus, mencoba menyambung ulang...");
+      wifiSedangPutus = true;
+    }
+    tandaiTerputus();
+    serverTerhubung = false;
+    klienTelegram.stop();   // koneksi keep-alive pasti sudah basi
+    WiFi.reconnect();
+    return;
+  }
+
+  if (wifiSedangPutus) {
+    wifiSedangPutus = false;
+    Serial.print(">> WiFi tersambung lagi. IP: ");
+    Serial.println(WiFi.localIP());
+    mintaSinkronSegera = true;
+  }
+}

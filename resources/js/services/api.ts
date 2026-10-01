@@ -95,6 +95,15 @@ export const APIService = {
     return response.data.data || response.data;
   },
 
+  // Khusus Admin PAM: buang foto tanpa log yang tidak berguna.
+  deleteUnpairedAccessPhoto: async (id: number): Promise<void> => {
+    await api.delete(`/access-photos/${id}`);
+  },
+
+  deleteAllUnpairedAccessPhotos: async (): Promise<void> => {
+    await api.delete('/access-photos/unpaired');
+  },
+
   getMotionEvents: async (): Promise<MotionEvent[]> => {
     const response = await api.get('/motion-events');
     return response.data.data || response.data;

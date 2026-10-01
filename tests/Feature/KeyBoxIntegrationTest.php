@@ -60,14 +60,15 @@ class KeyBoxIntegrationTest extends TestCase
         ]);
     }
 
-    private function sendPhoto(int $triggerNumber = 1, string $key = self::BOARD_B_KEY): TestResponse
+    private function sendPhoto(int $triggerNumber = 1, string $key = self::BOARD_B_KEY, int $uptimeMs = 98765, ?int $ageMs = null): TestResponse
     {
-        return $this->withToken($key)->post('/api/device/keybox/foto', [
+        return $this->withToken($key)->post('/api/device/keybox/foto', array_filter([
             'perangkat' => 'kotak-kunci-cam-01',
             'nomor_pemicu' => $triggerNumber,
-            'waktu_ms' => 98765,
+            'waktu_ms' => $uptimeMs,
+            'umur_ms' => $ageMs,
             'foto' => UploadedFile::fake()->image("tap_{$triggerNumber}.jpg", 800, 600),
-        ]);
+        ], fn ($value) => $value !== null));
     }
 
     public function test_board_a_log_is_stored_with_bearer_token(): void
@@ -226,5 +227,119 @@ class KeyBoxIntegrationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.trigger_number', 1);
+    }
+
+    public function test_board_b_retry_of_the_same_photo_is_not_stored_twice(): void
+    {
+        $this->sendPhoto(7)->assertCreated();
+        $first = AccessPhoto::sole();
+
+        // Firmware lama: waktu_ms dihitung ulang setelah timeout 5 detik.
+        $this->travel(5)->seconds();
+        $this->sendPhoto(7, uptimeMs: 98765 + 5400)->assertOk()->assertJson(['id' => $first->id]);
+
+        // Firmware baru: waktu_ms sama persis.
+        $this->sendPhoto(7)->assertOk()->assertJson(['id' => $first->id]);
+
+        $this->assertSame(1, AccessPhoto::count());
+        $this->assertCount(1, Storage::disk('public')->allFiles('access-photos'));
+    }
+
+    public function test_burst_attempts_pair_by_event_time_even_when_uploads_arrive_late(): void
+    {
+        $start = now()->startOfSecond();
+
+        // Tiga percobaan gagal beruntun: foto diambil saat jari menempel,
+        // log dicatat 0,8 detik kemudian, percobaan berikutnya 1,5 detik
+        // sesudahnya. Foto baru terkirim 6 detik kemudian (antrean Board B)
+        // dan log menyusul setelah 20 detik (antrean Board A), terbalik urutannya.
+        $capturedAt = fn (int $i) => $start->copy()->addMilliseconds($i * 1500);
+        $loggedAt = fn (int $i) => $capturedAt($i)->addMilliseconds(800);
+
+        foreach ([0, 1, 2] as $i) {
+            $this->travelTo($start->copy()->addSeconds(6)->addMilliseconds($i * 300));
+            $this->sendPhoto($i + 1, uptimeMs: 1000 + $i * 1500, ageMs: (int) $capturedAt($i)->diffInMilliseconds(now()))
+                ->assertCreated();
+        }
+
+        foreach ([2, 1, 0] as $i) {
+            $this->travelTo($start->copy()->addSeconds(20)->addMilliseconds((2 - $i) * 300));
+            $this->sendLog([
+                'nomor_kejadian' => $i + 1,
+                'waktu_ms' => 5000 + $i * 1500,
+                'hasil' => 'tidak_cocok',
+                'id_sidik_jari' => -1,
+                'umur_ms' => (int) $loggedAt($i)->diffInMilliseconds(now()),
+            ])->assertCreated();
+        }
+
+        $pairs = AccessPhoto::orderBy('id')->get()
+            ->map(fn (AccessPhoto $photo) => [$photo->trigger_number, $photo->accessLog?->event_number])
+            ->all();
+
+        $this->assertSame([[1, 1], [2, 2], [3, 3]], $pairs);
+        $this->assertSame(
+            $loggedAt(0)->format('Y-m-d H:i:s.v'),
+            AccessLog::where('event_number', 1)->sole()->created_at->format('Y-m-d H:i:s.v'),
+        );
+    }
+
+    public function test_log_held_in_the_queue_for_minutes_still_finds_its_photo(): void
+    {
+        $this->sendPhoto(1, ageMs: 300);
+
+        $this->travel(3)->minutes();
+        $this->sendLog(['umur_ms' => 3 * 60 * 1000])->assertCreated();
+
+        $this->assertSame(AccessLog::sole()->id, AccessPhoto::sole()->access_log_id);
+    }
+
+    public function test_same_trigger_number_after_a_restart_is_a_new_photo(): void
+    {
+        $this->sendPhoto(1, uptimeMs: 20000);
+        $this->travel(10)->minutes();
+        $this->sendPhoto(1, uptimeMs: 25000)->assertCreated();
+
+        $this->assertSame(2, AccessPhoto::count());
+    }
+
+    public function test_admin_can_delete_unpaired_photos_but_not_paired_ones(): void
+    {
+        $this->sendPhoto(1);
+        $this->sendLog();
+        $paired = AccessPhoto::sole();
+
+        $this->travel(1)->minutes();
+        $this->sendPhoto(2, uptimeMs: 200000);
+        $this->sendPhoto(3, uptimeMs: 300000);
+        $this->travel(KeyBoxController::PAIRING_WINDOW_SECONDS + 1)->seconds();
+        [$single, $other] = AccessPhoto::whereNull('access_log_id')->orderBy('id')->get();
+
+        $admin = User::create([
+            'name' => 'Admin Uji',
+            'username' => 'admin-uji',
+            'password' => 'rahasia',
+            'role' => 'admin_pam',
+            'is_active' => true,
+        ]);
+        $piket = User::create([
+            'name' => 'Piket Uji',
+            'username' => 'piket-uji',
+            'password' => 'rahasia',
+            'role' => 'piket',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($piket)->deleteJson("/api/access-photos/{$single->id}")->assertForbidden();
+        $this->actingAs($admin)->deleteJson("/api/access-photos/{$paired->id}")->assertUnprocessable();
+
+        $this->actingAs($admin)->deleteJson("/api/access-photos/{$single->id}")->assertNoContent();
+        Storage::disk('public')->assertMissing(str_replace('/storage/', '', $single->image_path));
+
+        $this->actingAs($admin)->deleteJson('/api/access-photos/unpaired')->assertOk()->assertJson(['deleted' => 1]);
+        Storage::disk('public')->assertMissing(str_replace('/storage/', '', $other->image_path));
+
+        $this->assertSame([$paired->id], AccessPhoto::pluck('id')->all());
+        Storage::disk('public')->assertExists(str_replace('/storage/', '', $paired->image_path));
     }
 }

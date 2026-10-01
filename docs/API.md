@@ -207,15 +207,15 @@ php artisan keybox:register            # default: kotak-kunci-01 + kotak-kunci-c
 Satu log per percobaan akses dari Board A. JSON.
 
 ```json
-{ "perangkat": "kotak-kunci-01", "nomor_kejadian": 7, "waktu_ms": 123456, "hasil": "cocok",
-  "id_sidik_jari": 1, "keyakinan": 76, "gagal_beruntun": 0, "alarm": false }
+{ "perangkat": "kotak-kunci-01", "nomor_kejadian": 7, "waktu_ms": 123456, "umur_ms": 850,
+  "hasil": "cocok", "id_sidik_jari": 1, "keyakinan": 76, "gagal_beruntun": 0, "alarm": false }
 ```
 
 - `hasil` = `cocok` → `result: success`; `tidak_cocok` / `tidak_terbaca` / `keyakinan_rendah` → `result: failed` (nilai aslinya disimpan di `reason`). `id_sidik_jari: -1` disimpan sebagai `fingerprint_id: null`.
-- Waktu kejadian memakai jam server (`created_at`); `waktu_ms` hanya disimpan sebagai `device_uptime_ms`.
+- Waktu kejadian (`created_at`, presisi milidetik) = jam server saat diterima dikurangi `umur_ms` (opsional: sudah berapa lama log menunggu di antrean Board A). Tanpa `umur_ms`, jam terima yang dipakai. `waktu_ms` hanya disimpan sebagai `device_uptime_ms`.
 - **Idempoten:** kiriman ulang dengan `nomor_kejadian` + `waktu_ms` yang sama dibalas `200` tanpa disimpan dua kali.
 - **Nomor bolong:** `missing_before` = jumlah nomor yang terlewat sejak log sebelumnya; `device_restarted: true` kalau `waktu_ms` mundur atau nomor kembali kecil.
-- **Pemasangan foto:** log mengklaim foto terbaru dari kamera pasangannya (`device_statuses.camera_device_id`) yang belum berpasangan dan tiba ≤ 10 detik sebelumnya. Jendelanya 10 detik, bukan 3, karena log `cocok` baru dikirim setelah solenoid terkunci lagi (5–8 detik).
+- **Pemasangan foto:** log mengklaim foto dari kamera pasangannya (`device_statuses.camera_device_id`) yang belum berpasangan dan waktu potretnya paling dekat dengan waktu kejadian log, dalam selisih ≤ 10 detik ke arah mana pun. Karena memakai waktu kejadian, bukan jam tiba, pemasangan tetap benar walau log atau foto tertahan lama di antrean.
 
 Response `201`: `{ "ok": true, "id": 42 }` (`200` untuk kiriman ulang).
 
@@ -226,13 +226,22 @@ Satu foto per percobaan dari Board B. `multipart/form-data`.
 |---|---|---|
 | `perangkat` | string | wajib, mis. `kotak-kunci-cam-01` |
 | `nomor_pemicu` | integer | wajib |
-| `waktu_ms` | integer | wajib |
+| `waktu_ms` | integer | wajib, jam papan saat memotret (sama di setiap kiriman ulang) |
+| `umur_ms` | integer | opsional, sudah berapa lama foto menunggu di antrean saat dikirim |
 | `foto` | file | wajib, image, maks 5MB |
 
-Response `201`: `{ "ok": true, "id": 9 }`. Foto disimpan di `access_photos` tanpa pasangan dulu; log yang tiba sesudahnya yang mengklaimnya.
+Response `201`: `{ "ok": true, "id": 9 }`. Waktu potret (`created_at`) = jam terima dikurangi `umur_ms`. Foto langsung dipasangkan dengan log yang sudah ada kalau waktunya paling dekat (≤ 10 detik); kalau belum ada, log yang tiba sesudahnya yang mengklaimnya.
+
+Kiriman ulang (nomor pemicu sama, `waktu_ms` paling lama 30 detik lebih akhir, waktu potret selisih ≤ 30 detik) dibalas `200` dengan `id` foto yang sudah tersimpan dan tidak disimpan lagi.
 
 ### `GET /access-photos/unpaired` 🔐
 Foto kotak kunci yang tidak pernah mendapat pasangan log (lebih tua dari jendela pemasangan), terbaru duluan. Ditampilkan di halaman Access Log sebagai "Foto Tanpa Log".
+
+### `DELETE /access-photos/{id}` 🔐 (Admin PAM)
+Hapus satu foto tanpa log beserta filenya. Response `204`; `422` kalau foto sudah terpasang pada log.
+
+### `DELETE /access-photos/unpaired` 🔐 (Admin PAM)
+Hapus semua foto tanpa log (yang tampil di endpoint `GET` di atas). Response `200`: `{ "deleted": 17 }`.
 
 ---
 

@@ -45,6 +45,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/personnel/{personnel}', [PersonnelController::class, 'update']);
         Route::post('/personnel/{personnel}/deactivate', [PersonnelController::class, 'deactivate']);
 
+        Route::delete('/access-photos/unpaired', [AccessLogController::class, 'destroyUnpairedPhotos']);
+        Route::delete('/access-photos/{photo}', [AccessLogController::class, 'destroyUnpairedPhoto']);
+
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{user}', [UserController::class, 'update']);

@@ -18,7 +18,8 @@ function timeAgo(isoStr: string): string {
   const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
   if (diff < 60) return `${diff} dtk lalu`;
   if (diff < 3600) return `${Math.floor(diff / 60)} mnt lalu`;
-  return new Date(isoStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+  if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+  return `${Math.floor(diff / 86400)} hari lalu`;
 }
 
 export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) => {
@@ -79,7 +80,7 @@ export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) =>
                     {/* Waktu */}
                     <td className={`py-3 px-4 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                       <div className="text-xs font-semibold">
-                        {new Date(event.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {new Date(event.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                       </div>
                       <div className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                         {timeAgo(event.created_at)}

@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff } from 'lucide-react';
+import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff, Trash2 } from 'lucide-react';
 import { AccessLog, AccessPhoto, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
@@ -15,6 +15,9 @@ interface AccessLogViewProps {
   logs: AccessLog[];
   personnelList: Personnel[];
   unpairedPhotos: AccessPhoto[];
+  // Hanya diisi untuk Admin PAM; tanpa ini tombol hapus tidak tampil.
+  onDeleteUnpairedPhoto?: (id: number) => Promise<void>;
+  onDeleteAllUnpairedPhotos?: () => Promise<void>;
 }
 
 interface ZoomTarget {
@@ -23,7 +26,13 @@ interface ZoomTarget {
   subtitle: string;
 }
 
-export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelList, unpairedPhotos }) => {
+export const AccessLogView: React.FC<AccessLogViewProps> = ({
+  logs,
+  personnelList,
+  unpairedPhotos,
+  onDeleteUnpairedPhoto,
+  onDeleteAllUnpairedPhotos,
+}) => {
   const { isDark } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'success' | 'failed'>('ALL');
@@ -31,6 +40,19 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
   const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
+  const [isDeletingPhotos, setIsDeletingPhotos] = useState(false);
+
+  const deletePhotos = async (action: () => Promise<void>, question: string) => {
+    if (!window.confirm(question)) return;
+    setIsDeletingPhotos(true);
+    try {
+      await action();
+    } catch (err) {
+      window.alert('Gagal menghapus foto. Coba lagi.');
+    } finally {
+      setIsDeletingPhotos(false);
+    }
+  };
 
   const resetToFirstPage = () => setCurrentPage(1);
 
@@ -285,30 +307,57 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({ logs, personnelLis
             <h3 className="text-sm font-bold text-amber-300">
               Foto Tanpa Log ({unpairedPhotos.length})
             </h3>
+            {onDeleteAllUnpairedPhotos && (
+              <button
+                onClick={() => deletePhotos(
+                  onDeleteAllUnpairedPhotos,
+                  `Hapus semua ${unpairedPhotos.length} foto tanpa log? Foto yang dihapus tidak bisa dikembalikan.`,
+                )}
+                disabled={isDeletingPhotos}
+                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Hapus semua
+              </button>
+            )}
           </div>
           <p className="text-[11px] font-mono mb-4 text-slate-400">
             Kamera memotret percobaan akses, tetapi log sidik jarinya tidak pernah sampai ke server.
           </p>
           <div className="flex flex-wrap gap-3">
             {unpairedPhotos.map((photo) => (
-              <button
-                key={photo.id}
-                onClick={() => setZoomTarget({
-                  imageUrl: photo.image_path,
-                  title: 'Foto tanpa log',
-                  subtitle: `${new Date(photo.created_at).toLocaleString('id-ID')} · pemicu #${photo.trigger_number}`,
-                })}
-                className="text-left cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <img
-                  src={photo.image_path}
-                  alt={`Pemicu #${photo.trigger_number}`}
-                  className="w-24 h-18 rounded border object-cover border-amber-500/40"
-                />
-                <div className="text-[10px] font-mono mt-1 text-slate-400">
-                  {new Date(photo.created_at).toLocaleString('id-ID')}
-                </div>
-              </button>
+              <div key={photo.id} className="relative group">
+                <button
+                  onClick={() => setZoomTarget({
+                    imageUrl: photo.image_path,
+                    title: 'Foto tanpa log',
+                    subtitle: `${new Date(photo.created_at).toLocaleString('id-ID')} · pemicu #${photo.trigger_number}`,
+                  })}
+                  className="text-left cursor-pointer hover:opacity-90 transition-opacity"
+                >
+                  <img
+                    src={photo.image_path}
+                    alt={`Pemicu #${photo.trigger_number}`}
+                    className="w-24 h-18 rounded border object-cover border-amber-500/40"
+                  />
+                  <div className="text-[10px] font-mono mt-1 text-slate-400">
+                    {new Date(photo.created_at).toLocaleString('id-ID')}
+                  </div>
+                </button>
+                {onDeleteUnpairedPhoto && (
+                  <button
+                    onClick={() => deletePhotos(
+                      () => onDeleteUnpairedPhoto(photo.id),
+                      `Hapus foto pemicu #${photo.trigger_number} (${new Date(photo.created_at).toLocaleString('id-ID')})?`,
+                    )}
+                    disabled={isDeletingPhotos}
+                    title="Hapus foto ini"
+                    className="absolute top-1 right-1 p-1 rounded bg-black/60 text-red-300 hover:bg-red-600 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-50 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

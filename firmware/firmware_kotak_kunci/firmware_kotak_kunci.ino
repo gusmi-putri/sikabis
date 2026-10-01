@@ -368,17 +368,24 @@ void antrikan(const char* hasil, int id, int keyakinan) {
   Serial.println(k.gagalKe);
 }
 
+/* umur_ms = sudah berapa lama kejadian ini tertahan di antrean saat
+   dikirim. Server memakainya untuk menghitung jam kejadian yang
+   sebenarnya, lalu memasangkan log dengan foto Board B berdasarkan jam
+   itu - bukan jam tiba, yang bisa terlambat berdetik-detik (solenoid
+   terbuka, Wi-Fi putus, server sibuk). Dihitung ulang tiap percobaan
+   kirim, jadi tetap benar walau log sudah lama menunggu. */
 void susunJson(const Kejadian &k, char* buf, size_t n) {
   snprintf(buf, n,
     "{\"perangkat\":\"%s\","
     "\"nomor_kejadian\":%lu,"
     "\"waktu_ms\":%lu,"
+    "\"umur_ms\":%lu,"
     "\"hasil\":\"%s\","
     "\"id_sidik_jari\":%d,"
     "\"keyakinan\":%d,"
     "\"gagal_beruntun\":%d,"
     "\"alarm\":%s}",
-    ID_PERANGKAT, k.nomor, k.waktu, k.hasil,
+    ID_PERANGKAT, k.nomor, k.waktu, millis() - k.waktu, k.hasil,
     k.id, k.keyakinan, k.gagalKe, k.alarm ? "true" : "false");
 }
 

@@ -9,6 +9,8 @@ use App\Models\DeviceStatus;
 use App\Models\Personnel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -19,20 +21,40 @@ use Illuminate\Support\Facades\Storage;
  * - Board A (sidik jari) mengirim satu log JSON per percobaan ke /device/keybox/log.
  * - Board B (ESP32-CAM) mengirim satu foto per percobaan ke /device/keybox/foto.
  *
- * Kedua board tidak berbagi nomor atau jam, jadi foto dipasangkan dengan
- * log berdasarkan jam server saat log diterima.
+ * Kedua board tidak berbagi nomor atau jam. Masing-masing mengirim
+ * `umur_ms` (sudah berapa lama kejadiannya saat dikirim), sehingga server
+ * bisa menghitung waktu kejadian sebenarnya walau kiriman tertahan di
+ * antrean. Foto dipasangkan dengan log yang waktu kejadiannya paling dekat.
  */
 class KeyBoxController extends Controller
 {
     /**
-     * Seberapa jauh ke belakang (detik) sebuah log mencari foto pasangannya.
+     * Selisih waktu kejadian maksimum (detik) antara foto dan log agar
+     * masih bisa dipasangkan, ke arah mana pun.
      *
-     * Spesifikasi menyarankan 3 detik, tapi itu hanya berlaku untuk percobaan
-     * gagal. Untuk percobaan cocok, Board A menahan lognya sampai solenoid
-     * terkunci lagi (5 detik, pengaman keras 8 detik), sehingga log baru
-     * tiba 5-8 detik setelah fotonya.
+     * Dengan `umur_ms`, selisih sebenarnya hanya 0-2 detik (foto diambil
+     * saat jari menempel, log dicatat begitu pencocokan selesai). Jendela
+     * lebar ini untuk firmware lama tanpa `umur_ms`, yang waktunya jam
+     * tiba: log cocok baru tiba 5-8 detik setelah fotonya (ditahan sampai
+     * solenoid terkunci), foto percobaan gagal tiba beberapa detik setelah
+     * lognya. Kalau ada beberapa kandidat, yang paling dekat yang dipilih.
      */
     public const PAIRING_WINDOW_SECONDS = 10;
+
+    /**
+     * Selisih `waktu_ms` maksimum (milidetik) agar foto dengan nomor pemicu
+     * yang sama dianggap kiriman ulang, bukan pemotretan baru.
+     *
+     * Board B mengulang kiriman saat balasan server tidak datang dalam
+     * TIMEOUT_HTTP, padahal kiriman pertama sering sudah tersimpan.
+     * Firmware lama menghitung ulang `waktu_ms` di tiap percobaan
+     * (selisih ~5,4 detik); firmware baru mengirim jam potret yang sama
+     * (selisih 0).
+     */
+    public const PHOTO_RETRY_TOLERANCE_MS = 30000;
+
+    /** Batas `umur_ms` yang masih dipercaya (7 hari). */
+    private const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
     /**
      * Terima satu log percobaan akses dari Board A.
@@ -50,6 +72,7 @@ class KeyBoxController extends Controller
             'keyakinan' => ['required', 'integer', 'min:0'],
             'gagal_beruntun' => ['required', 'integer', 'min:0'],
             'alarm' => ['required', 'boolean'],
+            'umur_ms' => ['nullable', 'integer', 'min:0'],
         ]);
 
         /** @var DeviceStatus $device */
@@ -73,11 +96,12 @@ class KeyBoxController extends Controller
 
             [$missingBefore, $restarted] = $this->detectGap($previous, $data['nomor_kejadian'], $data['waktu_ms']);
 
-            $photo = $this->findPhotoFor($device);
+            $occurredAt = $this->eventTime($data['umur_ms'] ?? null);
+            $photo = $this->findPhotoFor($device, $occurredAt);
             $isMatch = $data['hasil'] === 'cocok';
             $fingerprintId = $isMatch && $data['id_sidik_jari'] > 0 ? $data['id_sidik_jari'] : null;
 
-            $log = AccessLog::create([
+            $log = new AccessLog([
                 'fingerprint_id' => $fingerprintId,
                 'personnel_id' => $fingerprintId
                     ? Personnel::where('fingerprint_id', $fingerprintId)->where('status', 'active')->value('id')
@@ -94,6 +118,8 @@ class KeyBoxController extends Controller
                 'missing_before' => $missingBefore,
                 'device_restarted' => $restarted,
             ]);
+            $log->created_at = $occurredAt;
+            $log->save();
 
             $photo?->update(['access_log_id' => $log->id]);
 
@@ -108,18 +134,16 @@ class KeyBoxController extends Controller
     /**
      * Terima satu foto dari Board B.
      *
-     * Untuk PERCOBAAN COCOK, log dari Board A tiba belakangan (ditahan
-     * sampai solenoid terkunci lagi, 5-8 detik) -- foto disimpan tanpa
-     * pasangan dulu, nanti diklaim oleh findPhotoFor() saat log tiba.
+     * Urutan tibanya foto dan log tidak tetap. Untuk PERCOBAAN COCOK, log
+     * dari Board A ditahan sampai solenoid terkunci lagi, jadi foto tiba
+     * lebih dulu dan nanti diklaim findPhotoFor() saat log tiba. Untuk
+     * PERCOBAAN GAGAL, log sering sudah lebih dulu sampai, jadi foto yang
+     * menyusul mencari lognya di sini. Tanpa pemasangan mundur ini, foto
+     * percobaan gagal selamanya jadi yatim -- padahal itu justru bukti
+     * yang paling penting untuk dicatat.
      *
-     * Untuk PERCOBAAN GAGAL, urutannya TERBALIK: Board A tidak menahan
-     * apa pun (solenoid tidak pernah terbuka), jadi lognya sudah lebih
-     * dulu sampai di server, sementara fotonya baru menyusul beberapa
-     * detik kemudian (menunggu esp_camera + koneksi HTTPS). Tanpa
-     * pemasangan mundur di sini, foto percobaan gagal selamanya jadi
-     * yatim -- padahal itu justru bukti yang paling penting untuk
-     * dicatat (lihat komentar di Board A: "gembok lama tidak
-     * meninggalkan jejak siapa pun yang mencoba").
+     * Board B mengulang kiriman yang tidak dibalas; kiriman ulang dibalas
+     * 200 dengan id foto yang sudah ada tanpa disimpan lagi.
      */
     public function photo(Request $request): JsonResponse
     {
@@ -127,29 +151,41 @@ class KeyBoxController extends Controller
             'nomor_pemicu' => ['required', 'integer', 'min:1'],
             'waktu_ms' => ['required', 'integer', 'min:0'],
             'foto' => ['required', 'image', 'max:5120'],
+            'umur_ms' => ['nullable', 'integer', 'min:0'],
         ]);
 
         /** @var DeviceStatus $device */
         $device = $request->attributes->get('device');
+        $capturedAt = $this->eventTime($data['umur_ms'] ?? null);
+
+        $retried = AccessPhoto::retryOf($device->device_id, $data['nomor_pemicu'], $data['waktu_ms'], $capturedAt)->first();
+
+        if ($retried) {
+            $device->update(['status' => 'online', 'last_seen' => now()]);
+
+            return response()->json(['ok' => true, 'id' => $retried->id]);
+        }
+
         $path = $request->file('foto')->store('access-photos', 'public');
 
-        $photo = DB::transaction(function () use ($data, $device, $path) {
-            $photo = AccessPhoto::create([
+        $photo = DB::transaction(function () use ($data, $device, $path, $capturedAt) {
+            $photo = new AccessPhoto([
                 'device_id' => $device->device_id,
                 'trigger_number' => $data['nomor_pemicu'],
                 'device_uptime_ms' => $data['waktu_ms'],
                 'image_path' => Storage::disk('public')->url($path),
             ]);
+            $photo->created_at = $capturedAt;
+            $photo->save();
 
             $fingerprintBoard = DeviceStatus::where('camera_device_id', $device->device_id)->first();
 
             if ($fingerprintBoard) {
-                $orphanLog = AccessLog::where('device_id', $fingerprintBoard->device_id)
+                $orphanLog = $this->closestTo($capturedAt, AccessLog::where('device_id', $fingerprintBoard->device_id)
                     ->whereNull('image_path')
-                    ->where('created_at', '>=', now()->subSeconds(self::PAIRING_WINDOW_SECONDS))
-                    ->latest('id')
+                    ->whereBetween('created_at', $this->pairingRange($capturedAt))
                     ->lockForUpdate()
-                    ->first();
+                    ->get());
 
                 if ($orphanLog) {
                     $orphanLog->update(['image_path' => $photo->image_path]);
@@ -240,20 +276,55 @@ class KeyBoxController extends Controller
     }
 
     /**
-     * Foto terbaru dari kamera pasangan yang belum punya log dan tiba
-     * dalam jendela pemasangan.
+     * Foto dari kamera pasangan yang belum punya log dan waktu potretnya
+     * paling dekat dengan waktu kejadian log.
      */
-    private function findPhotoFor(DeviceStatus $device): ?AccessPhoto
+    private function findPhotoFor(DeviceStatus $device, Carbon $occurredAt): ?AccessPhoto
     {
         if (! $device->camera_device_id) {
             return null;
         }
 
-        return AccessPhoto::where('device_id', $device->camera_device_id)
+        return $this->closestTo($occurredAt, AccessPhoto::where('device_id', $device->camera_device_id)
             ->whereNull('access_log_id')
-            ->where('created_at', '>=', now()->subSeconds(self::PAIRING_WINDOW_SECONDS))
-            ->latest('id')
+            ->whereBetween('created_at', $this->pairingRange($occurredAt))
             ->lockForUpdate()
-            ->first();
+            ->get());
+    }
+
+    /**
+     * Waktu kejadian menurut jam server: jam tiba dikurangi umur kiriman.
+     * Tanpa `umur_ms` (firmware lama) atau dengan umur yang tidak masuk
+     * akal, jam tiba yang dipakai.
+     */
+    private function eventTime(?int $ageMs): Carbon
+    {
+        if ($ageMs === null || $ageMs > self::MAX_AGE_MS) {
+            return now();
+        }
+
+        return now()->subMilliseconds($ageMs);
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function pairingRange(Carbon $time): array
+    {
+        return [
+            $time->copy()->subSeconds(self::PAIRING_WINDOW_SECONDS),
+            $time->copy()->addSeconds(self::PAIRING_WINDOW_SECONDS),
+        ];
+    }
+
+    /**
+     * @template TModel of AccessLog|AccessPhoto
+     *
+     * @param  Collection<int, TModel>  $candidates
+     * @return TModel|null
+     */
+    private function closestTo(Carbon $time, Collection $candidates): AccessLog|AccessPhoto|null
+    {
+        return $candidates->sortBy(fn (AccessLog|AccessPhoto $candidate) => abs($candidate->created_at->diffInMilliseconds($time)))->first();
     }
 }

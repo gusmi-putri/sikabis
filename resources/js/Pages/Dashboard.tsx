@@ -113,11 +113,10 @@ export default function Dashboard() {
 
   // Poll berkala supaya perubahan dari luar tab ini (device fisik lewat
   // Telegram, atau operator lain) ikut muncul tanpa perlu reload manual.
-  // 15 detik dipilih senada dengan interval poll firmware (10 detik)
-  // ditambah sedikit jeda untuk request itu sendiri.
+  // Diubah ke 2 detik agar status (lampu, sensor PIR) lebih update secara real-time.
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => refreshData(currentUser, true), 15000);
+    const interval = setInterval(() => refreshData(currentUser, true), 2000);
     return () => clearInterval(interval);
   }, [currentUser, refreshData]);
 
@@ -225,6 +224,17 @@ export default function Dashboard() {
     setPirModeLogs([]);
     setDeviceStatus(EMPTY_DEVICE_STATUS);
     setKeyboxStatus([]);
+  };
+
+  // ── Aksi: Buang foto kotak kunci yang tidak punya log ──────
+  const handleDeleteUnpairedPhoto = async (id: number) => {
+    await APIService.deleteUnpairedAccessPhoto(id);
+    setUnpairedPhotos((photos) => photos.filter((photo) => photo.id !== id));
+  };
+
+  const handleDeleteAllUnpairedPhotos = async () => {
+    await APIService.deleteAllUnpairedAccessPhotos();
+    setUnpairedPhotos([]);
   };
 
   // ── Aksi: Catat personel yang sidik jarinya sudah didaftarkan di Board A ──
@@ -389,7 +399,13 @@ export default function Dashboard() {
 
           {/* ── ACCESS LOG ─────────────────────────────────── */}
           {activeTab === 'access-log' && (
-            <AccessLogView logs={accessLogs} personnelList={personnelList} unpairedPhotos={unpairedPhotos} />
+            <AccessLogView
+              logs={accessLogs}
+              personnelList={personnelList}
+              unpairedPhotos={unpairedPhotos}
+              onDeleteUnpairedPhoto={currentUser.role === 'admin_pam' ? handleDeleteUnpairedPhoto : undefined}
+              onDeleteAllUnpairedPhotos={currentUser.role === 'admin_pam' ? handleDeleteAllUnpairedPhotos : undefined}
+            />
           )}
 
           {/* ── MOTION LOG ─────────────────────────────────── */}

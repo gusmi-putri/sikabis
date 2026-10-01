@@ -18,6 +18,9 @@ class AccessLog extends Model
     /** @use HasFactory<AccessLogFactory> */
     use HasFactory;
 
+    /** Milidetik ikut disimpan; foto dan log dipasangkan berdasarkan waktu kejadian. */
+    protected $dateFormat = 'Y-m-d H:i:s.v';
+
     protected function casts(): array
     {
         return [
