@@ -23,28 +23,28 @@ class PersonnelController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'rank_nrp' => ['nullable', 'string', 'max:255'],
-            'notes' => ['nullable', 'string'],
-        ]);
+        $data = $this->validated($request, null, requireFingerprint: false);
 
-        $usedIds = Personnel::whereNotNull('fingerprint_id')->pluck('fingerprint_id')->toArray();
-        $freeId = null;
-        for ($i = 1; $i <= 127; $i++) {
-            if (!in_array($i, $usedIds)) {
-                $freeId = $i;
-                break;
+        // Jika fingerprint_id tidak dikirim, auto-assign ID terkecil yang bebas.
+        if (empty($data['fingerprint_id'])) {
+            $usedIds = Personnel::whereNotNull('fingerprint_id')->pluck('fingerprint_id')->toArray();
+            $freeId = null;
+            for ($i = 1; $i <= 127; $i++) {
+                if (!in_array($i, $usedIds)) {
+                    $freeId = $i;
+                    break;
+                }
             }
-        }
 
-        if (!$freeId) {
-            abort(400, 'Kapasitas sidik jari penuh (maksimal 127 orang).');
+            if (!$freeId) {
+                abort(400, 'Kapasitas sidik jari penuh (maksimal 127 orang).');
+            }
+
+            $data['fingerprint_id'] = $freeId;
         }
 
         $personnel = Personnel::create([
             ...$data,
-            'fingerprint_id' => $freeId,
             'status' => 'active',
         ]);
 
@@ -54,7 +54,7 @@ class PersonnelController extends Controller
             $device->update([
                 'keybox_command' => 'ENROLL',
                 'keybox_command_at' => now(),
-                'keybox_command_target' => $freeId,
+                'keybox_command_target' => $personnel->fingerprint_id,
                 'keybox_enroll_message' => 'Menunggu pendaftaran sidik jari di alat...',
                 'keybox_enroll_message_at' => now(),
             ]);

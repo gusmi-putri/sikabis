@@ -34,29 +34,30 @@
    Hanya bagian ini yang berubah saat pindah jaringan atau server.
    ================================================================== */
 
-const char* WIFI_SSID  = "Lab Modern Alkomlek";
-const char* WIFI_SANDI = "prc_1077";
+const char* WIFI_SSID  = "RENDAL";
+const char* WIFI_SANDI = "Komlekad42";
 
 // Alamat endpoint milik rekan Anda. Selama masih false, firmware
 // berjalan penuh tetapi log hanya dicetak ke Serial Monitor -
 // berguna untuk menguji semuanya sebelum servernya siap.
 const bool  KIRIM_KE_SERVER = true;
-const char* SERVER_URL      = "http://192.168.1.243/sikabis/public/api/device/keybox/log";
-const char* SERVER_TOKEN    = "APIKEY-KOTAK-KUNCI-01";
+const char* SERVER_URL      = "http://192.168.1.3/sikabis/public/api/device/keybox/log";
+const char* SERVER_TOKEN    = "aef9dr93yJOg2d5tStM0bwAMeuKgi8NziRptDIoI";
 const char* ID_PERANGKAT    = "kotak-kunci-01";
 
 // Perintah dari dashboard web (mute alarm / paksa kunci). SENGAJA tidak
 // ada perintah untuk membuka solenoid dari jarak jauh -- itu keputusan
 // keamanan yang disengaja, bukan keterbatasan teknis. Lihat juga
 // KeyBoxController::command() di backend.
-const char* SERVER_URL_PERINTAH = "http://192.168.1.243/sikabis/public/api/device/keybox/command";
-const unsigned long JEDA_POLL_PERINTAH = 5000;
+const char* SERVER_URL_PERINTAH = "http://192.168.1.3/sikabis/public/api/device/keybox/command";
+const unsigned long JEDA_POLL_PERINTAH = 1000;
 
 // Dipakai enroll/delete untuk melapor tiap tahap ("Tempelkan jari",
 // "Angkat jari...", dst) supaya operator bisa mengikuti dari dashboard
 // web, tidak perlu buka Serial Monitor untuk tahu kapan harus menyentuh
 // sensor.
-const char* SERVER_URL_ENROLL_STATUS = "http://192.168.1.243/sikabis/public/api/device/keybox/enroll-status";
+const char* SERVER_URL_ENROLL_STATUS = "http://192.168.1.3/sikabis/public/api/device/keybox/enroll-status";
+const char* SERVER_URL_TEMPLATE      = "http://192.168.1.3/sikabis/public/api/device/keybox/templates";
 
 /* ==================================================================
    BAGIAN 2  -  PIN
@@ -95,12 +96,27 @@ const uint16_t AMBANG_KEYAKINAN = 50;
 const int BATAS_GAGAL = 3;
 
 const unsigned long LAMA_PULSA_KAMERA = 50;     // lebar pulsa pemicu
-const unsigned long JEDA_LEPAS_JARI   = 400;    // jari harus lepas selama
-                                                // ini sebelum tap berikutnya
+const unsigned long JEDA_LEPAS_JARI   = 600;    // jari harus lepas selama
+                                                // ini sebelum tap berikutnya;
+                                                // dinaikkan dari 400 ms agar
+                                                // spam jari tidak membanjiri
+                                                // Board B dengan pulsa cepat
 const unsigned long ALARM_AUTO_MATI   = 60000;  // 0 = alarm tidak pernah
                                                 // mati sendiri
-const unsigned long TIMEOUT_HTTP      = 3000;
+const unsigned long TIMEOUT_HTTP      = 8000;
 const unsigned long JEDA_COBA_WIFI    = 15000;
+
+/* Kalau server tidak menjawab, kiriman log berikutnya ditunda dengan
+   jeda yang makin panjang (2 s, 4 s, 8 s ... maks 30 s). Tanpa jeda
+   ini, setiap putaran loop memblokir sampai beberapa detik menunggu
+   server yang mati, dan sensor sidik jari jadi lambat menanggapi. */
+const unsigned long JEDA_ULANG_KIRIM_AWAL = 2000;
+const unsigned long JEDA_ULANG_KIRIM_MAX  = 30000;
+
+/* Batas waktu menunggu jari saat pendaftaran. Tanpa batas ini, perintah
+   ENROLL dari web yang tidak diikuti sentuhan jari membekukan Board A
+   selamanya: tidak ada akses, tidak ada log, alarm tidak bisa di-mute. */
+const unsigned long BATAS_TUNGGU_ENROLL = 20000;
 
 /* ==================================================================
    BAGIAN 4  -  KEADAAN
@@ -121,9 +137,6 @@ int           gagalBeruntun = 0;
 bool          alarmAktif    = false;
 unsigned long alarmMulai    = 0;
 
-bool          pulsaAktif  = false;
-unsigned long pulsaMulai  = 0;
-
 bool          jariMenempel = false;
 unsigned long jariLepasSejak = 0;
 
@@ -135,6 +148,8 @@ unsigned long bipLamaMati  = 0;
 
 unsigned long wifiCobaTerakhir = 0;
 unsigned long pollPerintahTerakhir = 0;
+unsigned long jedaKirim        = 0;   // 0 = tidak sedang menunda kiriman
+unsigned long gagalKirimPada   = 0;
 
 /* Nomor kejadian disimpan di flash ESP32, bukan sekadar di memori.
 
@@ -310,21 +325,25 @@ void layaniBuzzer() {
 /* ==================================================================
    BAGIAN 8  -  PEMICU KAMERA
    Satu kabel GPIO ditambah ground bersama. Board A menaikkan pin
-   ini sesaat; Board B menunggu tepi naik lalu memotret.
+   tepat 50 ms; Board B mengukur lebar pulsanya dan memotret di tepi
+   turun (pulsa sah 15-500 ms).
+
+   Versi sebelumnya menurunkan pin lewat layaniPulsaKamera() di loop.
+   Masalahnya, picuKamera() dipanggil tepat sebelum image2Tz() dan
+   fingerFastSearch(), yang memblokir 270-520 ms (terukur sebagai
+   selisih foto-log pada uji 23-24 Sep). Selama itu pin tetap tinggi,
+   sehingga:
+     - Board B baru memotret SETELAH hasil pencocokan keluar, dan
+     - pulsa > 500 ms ditolak Board B sebagai gangguan -> tap tanpa foto.
+   Sekarang pulsa dibuat utuh di sini. Memblokir 50 ms aman: fungsi
+   ini hanya dipanggil saat solenoid terkunci (bacaSidikJari) atau
+   dari perintah uji, dan 50 ms jauh di bawah jendela 5 detik.
    ================================================================== */
 
 void picuKamera() {
   digitalWrite(PIN_PEMICU_KAMERA, HIGH);
-  pulsaAktif = true;
-  pulsaMulai = millis();
-}
-
-void layaniPulsaKamera() {
-  if (!pulsaAktif) return;
-  if (millis() - pulsaMulai >= LAMA_PULSA_KAMERA) {
-    digitalWrite(PIN_PEMICU_KAMERA, LOW);
-    pulsaAktif = false;
-  }
+  delay(LAMA_PULSA_KAMERA);
+  digitalWrite(PIN_PEMICU_KAMERA, LOW);
 }
 
 /* ==================================================================
@@ -389,12 +408,18 @@ void susunJson(const Kejadian &k, char* buf, size_t n) {
     k.id, k.keyakinan, k.gagalKe, k.alarm ? "true" : "false");
 }
 
+void buangKepalaAntrean() {
+  for (int i = 1; i < antreanIsi; i++) antrean[i - 1] = antrean[i];
+  antreanIsi--;
+}
+
 void kirimAntrean() {
   if (antreanIsi == 0) return;
   if (terbuka) return;                       // jangan pernah memblokir
                                              // selagi solenoid menyala
   if (!KIRIM_KE_SERVER) { antreanIsi = 0; return; }
   if (WiFi.status() != WL_CONNECTED) return;
+  if (jedaKirim > 0 && millis() - gagalKirimPada < jedaKirim) return;
 
   char json[256];
   susunJson(antrean[0], json, sizeof(json));
@@ -415,14 +440,34 @@ void kirimAntrean() {
     Serial.print(antrean[0].nomor);
     Serial.print(F(" terkirim, balasan "));
     Serial.println(kode);
-    for (int i = 1; i < antreanIsi; i++) antrean[i - 1] = antrean[i];
-    antreanIsi--;
+    buangKepalaAntrean();
+    jedaKirim = 0;
+  } else if (kode >= 400 && kode < 500 && kode != 408 && kode != 429) {
+    /* Server menolak ISI log-nya (token salah, data tidak sah).
+       Mengulang tidak akan mengubah apa pun, dan kalau dibiarkan di
+       kepala antrean, log ini menahan semua log di belakangnya.
+       Kebijakannya sama dengan foto di Board B. Nomornya tetap
+       terpakai, jadi server melihat lubang - bukan nomor yang hilang
+       diam-diam. */
+    Serial.print(F("  Log #"));
+    Serial.print(antrean[0].nomor);
+    Serial.print(F(" DITOLAK server (kode "));
+    Serial.print(kode);
+    Serial.println(F("), tidak diulang."));
+    buangKepalaAntrean();
+    jedaKirim = 0;
   } else {
+    gagalKirimPada = millis();
+    jedaKirim = jedaKirim == 0 ? JEDA_ULANG_KIRIM_AWAL
+                               : min(jedaKirim * 2, JEDA_ULANG_KIRIM_MAX);
     Serial.print(F("  Gagal mengirim log #"));
     Serial.print(antrean[0].nomor);
     Serial.print(F(", kode "));
-    Serial.println(kode);
-    // Log tetap di antrean dan dicoba lagi nanti.
+    Serial.print(kode);
+    Serial.print(F(", dicoba lagi "));
+    Serial.print(jedaKirim);
+    Serial.println(F(" ms lagi."));
+    // Log tetap di antrean.
   }
 }
 
@@ -471,6 +516,8 @@ void cekPerintahServer() {
   } else if (isi.indexOf("RESET_SENSOR") >= 0) {
     Serial.println(F("  Deteksi ulang sensor sidik jari lewat perintah web."));
     mulaiSensor();
+  } else if (isi.indexOf("SCAN") >= 0) {
+    pindaiTemplate();
   } else if (isi.indexOf("ENROLL") >= 0) {
     int posisi = isi.indexOf("\"target\":");
     int target = posisi >= 0 ? isi.substring(posisi + 9).toInt() : 0;
@@ -504,7 +551,7 @@ void laporEnroll(const String &pesan) {
   if (!KIRIM_KE_SERVER || WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  http.setTimeout(3000);
+  http.setTimeout(1500);
   http.begin(SERVER_URL_ENROLL_STATUS);
   http.addHeader("Content-Type", "application/json");
   if (strlen(SERVER_TOKEN) > 0) {
@@ -620,8 +667,10 @@ void bacaSidikJari() {
 /* ==================================================================
    BAGIAN 11  -  PENDAFTARAN SIDIK JARI (perawatan)
    Memakai delay() dan memang diniatkan memblokir, karena hanya
-   dijalankan oleh petugas lewat Serial Monitor, bukan saat sistem
-   sedang berjaga. Solenoid dipaksa terkunci lebih dulu.
+   dijalankan oleh petugas (lewat Serial Monitor atau perintah ENROLL
+   dari dashboard), bukan saat sistem sedang berjaga. Solenoid dipaksa
+   terkunci lebih dulu, dan setiap penantian jari dibatasi 20 detik
+   supaya perintah yang tidak ditindaklanjuti tidak membekukan papan.
    ================================================================== */
 
 void daftarSidikJari() {
@@ -647,11 +696,41 @@ void daftarSidikJari() {
    hardware, bukan sesuatu yang bisa dilewati dari jaringan. Yang
    dihapus dari jalur web hanyalah keharusan buka Serial Monitor untuk
    mengetik nomor ID. */
+/* Tunggu sensor mencapai keadaan tertentu (jari menempel / jari lepas),
+   paling lama batasMs. Buzzer tetap dilayani selama menunggu, supaya
+   bip "jari pertama terbaca" benar-benar berbunyi dan alarm yang
+   sedang menyala tetap bisa mati sendiri pada batas waktunya. */
+bool tungguSensor(uint8_t target, unsigned long batasMs) {
+  unsigned long mulai = millis();
+  while (sensor.getImage() != target) {
+    if (millis() - mulai > batasMs) return false;
+    layaniBuzzer();
+    delay(50);
+  }
+  return true;
+}
+
 void daftarSidikJariID(int id) {
   paksaTerkunci();
 
+  /* Saat fungsi ini selesai, jari operator biasanya masih menempel.
+     Tanpa baris ini, putaran loop berikutnya langsung mencocokkan jari
+     itu dengan template yang BARU disimpan dan membuka solenoid.
+     Dengan jariMenempel = true, bacaSidikJari() menunggu jari diangkat
+     dulu sebelum menerima tap berikutnya. Berlaku untuk semua jalan
+     keluar fungsi ini, berhasil maupun gagal. */
+  jariMenempel = true;
+
+  if (!sensorSiap) {
+    laporEnroll("Gagal - sensor sidik jari tidak terdeteksi");
+    return;
+  }
+
   laporEnroll("Tempelkan jari untuk ID " + String(id));
-  while (sensor.getImage() != FINGERPRINT_OK) delay(50);
+  if (!tungguSensor(FINGERPRINT_OK, BATAS_TUNGGU_ENROLL)) {
+    laporEnroll("Batal - tidak ada jari dalam 20 detik");
+    return;
+  }
   if (sensor.image2Tz(1) != FINGERPRINT_OK) {
     laporEnroll("Gagal - gambar pertama tidak jelas, ulangi dari awal");
     return;
@@ -659,10 +738,16 @@ void daftarSidikJariID(int id) {
 
   laporEnroll("Angkat jari...");
   mulaiBip(1, 100, 50); // Bunyi bip pendek tanda jari pertama sudah terbaca
-  while (sensor.getImage() != FINGERPRINT_NOFINGER) delay(50);
+  if (!tungguSensor(FINGERPRINT_NOFINGER, BATAS_TUNGGU_ENROLL)) {
+    laporEnroll("Batal - jari tidak diangkat dalam 20 detik");
+    return;
+  }
 
   laporEnroll("Tempelkan jari yang SAMA sekali lagi");
-  while (sensor.getImage() != FINGERPRINT_OK) delay(50);
+  if (!tungguSensor(FINGERPRINT_OK, BATAS_TUNGGU_ENROLL)) {
+    laporEnroll("Batal - tidak ada jari dalam 20 detik");
+    return;
+  }
   if (sensor.image2Tz(2) != FINGERPRINT_OK) {
     laporEnroll("Gagal - gambar kedua tidak jelas, ulangi dari awal");
     return;
@@ -680,6 +765,41 @@ void daftarSidikJariID(int id) {
     laporEnroll("Gagal - modul sensor menolak menyimpan (mungkin penuh)");
   }
   garis();
+}
+
+/* Memeriksa 127 slot sensor dan melaporkan ID yang terisi ke server */
+void pindaiTemplate() {
+  if (!sensorSiap) return;
+  Serial.println(F("  Memindai slot sensor sidik jari ..."));
+
+  String ids = "";
+  int jumlah = 0;
+  for (int id = 1; id <= 127; id++) {
+    if (sensor.loadModel(id) == FINGERPRINT_OK) {
+      if (jumlah > 0) ids += ",";
+      ids += String(id);
+      jumlah++;
+    }
+  }
+  Serial.print(F("  Pindai selesai, terisi: "));
+  Serial.println(jumlah);
+
+  if (!KIRIM_KE_SERVER || WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.setTimeout(TIMEOUT_HTTP);
+  http.begin(SERVER_URL_TEMPLATE);
+  http.addHeader("Content-Type", "application/json");
+  if (strlen(SERVER_TOKEN) > 0) {
+    http.addHeader("Authorization", String("Bearer ") + SERVER_TOKEN);
+  }
+  String body = "{\"perangkat\":\"" + String(ID_PERANGKAT) + "\",\"ids\":[" + ids + "]}";
+  int kode = http.POST(body);
+  if (kode != 204) {
+    Serial.print(F("  Lapor hasil pindai gagal, kode "));
+    Serial.println(kode);
+  }
+  http.end();
 }
 
 /* Menghapus template sidik jari dari memori sensor AS608 */
@@ -892,7 +1012,6 @@ void setup() {
 
 void loop() {
   layaniSolenoid();        // pertama, supaya timer paling terjamin
-  layaniPulsaKamera();
   layaniBuzzer();
   bacaSidikJari();
   layaniPerintah();

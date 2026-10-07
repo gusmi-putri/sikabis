@@ -6,7 +6,7 @@
  *            (dipakai saat ada kegiatan resmi di gudang).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Shield, ShieldOff, Radio, Timer, Wifi, WifiOff, Clock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceStatus, PIRMode } from '../types';
@@ -24,8 +24,40 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
   const [showTimerOptions, setShowTimerOptions] = useState(false);
   const [timeLeftStr, setTimeLeftStr] = useState('');
 
+  // ── Override Mode ────────────────────────────────────────────
+  // Saat user mengklik tombol, kita simpan pilihan di sini dan tidak
+  // membiarkan props (dari polling) menimpa tampilan sampai:
+  //   a) props akhirnya mengonfirmasi mode yang sama (device sudah ack), ATAU
+  //   b) timeout 20 detik habis (give up, ikuti props lagi).
+  // Tanpa ini, heartbeat ESP32 yang masih lapor mode lama akan
+  // menyebabkan UI loncat balik meskipun perintah sudah dikirim.
+  const [overrideMode, setOverrideMode] = useState<PIRMode | null>(null);
+  const overrideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Bersihkan override saat props akhirnya cocok dengan yang dikehendaki
+  useEffect(() => {
+    if (overrideMode !== null && deviceStatus.pir_mode === overrideMode) {
+      setOverrideMode(null);
+      if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
+    }
+  }, [deviceStatus.pir_mode, overrideMode]);
+
+  // Cleanup saat komponen di-unmount
+  useEffect(() => {
+    return () => { if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current); };
+  }, []);
+
+  const setMode = (mode: PIRMode, durationMinutes?: number) => {
+    setOverrideMode(mode);
+    setShowTimerOptions(false);
+    // Fallback: lepas override setelah 20 detik kalau device tidak pernah ack
+    if (overrideTimerRef.current) clearTimeout(overrideTimerRef.current);
+    overrideTimerRef.current = setTimeout(() => setOverrideMode(null), 20000);
+    onSetMode(mode, durationMinutes);
+  };
+
   const isOnline = deviceStatus.status === 'online';
-  const isArmed = deviceStatus.pir_mode === 'ON';
+  const isArmed = (overrideMode ?? deviceStatus.pir_mode) === 'ON';
 
   const lastSeenStr = deviceStatus.last_seen
     ? new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID', {
@@ -139,10 +171,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
         {/* Nyalakan Sensor */}
         <button
           id="btn-set-armed"
-          onClick={() => {
-              onSetMode('ON');
-              setShowTimerOptions(false);
-          }}
+          onClick={() => setMode('ON')}
           disabled={isArmed}
           title="Nyalakan sensor PIR: gerakan memicu foto + notifikasi Telegram"
           className={`flex flex-col items-start px-4 py-3 rounded-xl border text-sm font-semibold transition-all cursor-pointer ${isArmed
@@ -171,17 +200,17 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
                   <p className={`text-[10px] font-mono mb-2 px-1 text-center font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Pilih Durasi Nonaktif:</p>
                   <div className="space-y-1">
                     {[30, 60, 120].map(mins => (
-                      <button 
+                      <button
                         key={mins}
-                        onClick={() => { onSetMode('OFF', mins); setShowTimerOptions(false); }}
+                        onClick={() => setMode('OFF', mins)}
                         className={`w-full text-left px-3 py-2 rounded text-xs font-semibold hover:bg-red-500 hover:text-white transition-colors ${isDark ? 'bg-slate-900 text-slate-300' : 'bg-slate-100 text-slate-700'}`}
                       >
                         <Timer className="w-3.5 h-3.5 inline mr-2 opacity-70" />
                         {mins === 60 ? '1 Jam' : mins === 120 ? '2 Jam' : `${mins} Menit`}
                       </button>
                     ))}
-                    <button 
-                      onClick={() => { onSetMode('OFF'); setShowTimerOptions(false); }}
+                    <button
+                      onClick={() => setMode('OFF')}
                       className={`w-full text-left px-3 py-2 rounded text-xs font-semibold hover:bg-red-500 hover:text-white transition-colors ${isDark ? 'bg-slate-900 text-slate-300' : 'bg-slate-100 text-slate-700'}`}
                     >
                       <ShieldOff className="w-3.5 h-3.5 inline mr-2 opacity-70" />

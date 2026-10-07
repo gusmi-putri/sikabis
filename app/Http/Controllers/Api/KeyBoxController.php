@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -225,6 +226,29 @@ class KeyBoxController extends Controller
         $device->update(['status' => 'online', 'last_seen' => now()]);
 
         return response()->json(['command' => $command, 'target' => $target]);
+    }
+
+    /**
+     * Board A melaporkan ID yang terisi di sensor setelah perintah SCAN.
+     */
+    public function templates(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids' => ['present', 'array', 'max:127'],
+            'ids.*' => ['integer', 'between:1,127'],
+        ]);
+
+        /** @var DeviceStatus $device */
+        $device = $request->attributes->get('device');
+
+        Cache::put(KeyBoxTemplateController::CACHE_KEY, [
+            'ids' => array_values(array_unique($data['ids'])),
+            'at' => now()->toIso8601String(),
+        ], now()->addDay());
+
+        $device->update(['status' => 'online', 'last_seen' => now()]);
+
+        return response()->json(null, 204);
     }
 
     /**

@@ -192,6 +192,7 @@ export const INITIAL_DEVICE_STATUS: DeviceStatus = {
   device_id: 'GUDANG-01',
   status: 'online',
   pir_mode: 'ON',
+  auto_arm_at: null,
   flash_on: false,
   stream_url: null,
   last_seen: ago(0.5),

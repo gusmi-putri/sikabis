@@ -17,19 +17,27 @@ interface PersonnelRegistrationCardProps {
   personnelList: Personnel[];
   keyboxStatus: DeviceStatus[];
   onCreate: (data: PersonnelInput) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const EMPTY_FORM = { name: '', rank_nrp: '', notes: '' };
 
 export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps> = ({
-  personnelList,
+  personnelList: _personnelList,
   keyboxStatus,
   onCreate,
+  onDirtyChange,
 }) => {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
+
+  const isDirty = formData.name !== '' || formData.rank_nrp !== '' || formData.notes !== '';
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const boardA = keyboxStatus.find((d) => d.device_id === 'kotak-kunci-01') ?? null;
   
@@ -70,7 +78,9 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
         rank_nrp: formData.rank_nrp || undefined,
         notes: formData.notes || undefined,
       });
+      setLiveMessage('Menunggu pendaftaran sidik jari di alat...');
       setFormData(EMPTY_FORM);
+      onDirtyChange?.(false);
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {

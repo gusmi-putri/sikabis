@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceEventController;
 use App\Http\Controllers\Api\DeviceStatusController;
 use App\Http\Controllers\Api\KeyBoxController;
+use App\Http\Controllers\Api\KeyBoxTemplateController;
 use App\Http\Controllers\Api\MotionEventController;
 use App\Http\Controllers\Api\PersonnelController;
 use App\Http\Controllers\Api\UserController;
@@ -23,6 +24,7 @@ Route::middleware('device.key')->prefix('device')->group(function () {
     Route::post('/keybox/foto', [KeyBoxController::class, 'photo']);
     Route::get('/keybox/command', [KeyBoxController::class, 'command']);
     Route::post('/keybox/enroll-status', [KeyBoxController::class, 'enrollStatus']);
+    Route::post('/keybox/templates', [KeyBoxController::class, 'templates']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -47,6 +49,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::delete('/access-photos/unpaired', [AccessLogController::class, 'destroyUnpairedPhotos']);
         Route::delete('/access-photos/{photo}', [AccessLogController::class, 'destroyUnpairedPhoto']);
+
+        Route::get('/keybox/templates', [KeyBoxTemplateController::class, 'index']);
+        Route::post('/keybox/templates/scan', [KeyBoxTemplateController::class, 'scan']);
+        Route::delete('/keybox/templates/{fingerprintId}', [KeyBoxTemplateController::class, 'destroy'])
+            ->whereNumber('fingerprintId');
 
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);

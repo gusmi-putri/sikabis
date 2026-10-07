@@ -9,7 +9,7 @@
 import React from 'react';
 import { Activity, KeyRound, Radio, Users, Shield, UserCog } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { NavTab } from '../Pages/Dashboard';
+import type { NavTab } from '../Pages/Dashboard';
 import { UserRole } from '../types';
 
 interface SidebarProps {

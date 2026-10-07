@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff, Trash2 } from 'lucide-react';
+import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff, Trash2, Download, AlertTriangle, X } from 'lucide-react';
 import { AccessLog, AccessPhoto, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
@@ -26,6 +26,11 @@ interface ZoomTarget {
   subtitle: string;
 }
 
+interface DeleteTarget {
+  label: string;
+  action: () => Promise<void>;
+}
+
 export const AccessLogView: React.FC<AccessLogViewProps> = ({
   logs,
   personnelList,
@@ -40,18 +45,50 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
   const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [zoomTarget, setZoomTarget] = useState<ZoomTarget | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [isDeletingPhotos, setIsDeletingPhotos] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const deletePhotos = async (action: () => Promise<void>, question: string) => {
-    if (!window.confirm(question)) return;
+  const confirmDelete = (label: string, action: () => Promise<void>) => {
+    setDeleteError(null);
+    setDeleteTarget({ label, action });
+  };
+
+  const executeDelete = async () => {
+    if (!deleteTarget) return;
     setIsDeletingPhotos(true);
+    setDeleteError(null);
     try {
-      await action();
-    } catch (err) {
-      window.alert('Gagal menghapus foto. Coba lagi.');
+      await deleteTarget.action();
+      setDeleteTarget(null);
+    } catch {
+      setDeleteError('Gagal menghapus foto. Coba lagi.');
     } finally {
       setIsDeletingPhotos(false);
     }
+  };
+
+  const exportCSV = () => {
+    const header = ['Waktu', 'Personel', 'Fingerprint ID', 'Device', 'Status', 'Alasan', 'Alarm'];
+    const rows = filteredLogs.map((log) => [
+      new Date(log.created_at).toLocaleString('id-ID'),
+      resolveDisplayName(log, personnelList),
+      log.fingerprint_id ?? '-',
+      log.device_id,
+      log.result === 'success' ? 'Berhasil' : 'Gagal',
+      log.reason ?? '-',
+      log.alarm ? 'Ya' : 'Tidak',
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `access-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const resetToFirstPage = () => setCurrentPage(1);
@@ -113,6 +150,16 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Export CSV */}
+        <button
+          onClick={exportCSV}
+          title="Unduh sebagai CSV"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg border text-[11px] font-semibold transition-colors border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 whitespace-nowrap"
+        >
+          <Download className="w-4 h-4" />
+          Unduh CSV
+        </button>
 
         {/* Search & Filter */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
@@ -309,9 +356,9 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
             </h3>
             {onDeleteAllUnpairedPhotos && (
               <button
-                onClick={() => deletePhotos(
+                onClick={() => confirmDelete(
+                  `Hapus semua ${unpairedPhotos.length} foto tanpa log? Tidak bisa dibatalkan.`,
                   onDeleteAllUnpairedPhotos,
-                  `Hapus semua ${unpairedPhotos.length} foto tanpa log? Foto yang dihapus tidak bisa dikembalikan.`,
                 )}
                 disabled={isDeletingPhotos}
                 className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-50 cursor-pointer"
@@ -346,9 +393,9 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
                 </button>
                 {onDeleteUnpairedPhoto && (
                   <button
-                    onClick={() => deletePhotos(
-                      () => onDeleteUnpairedPhoto(photo.id),
+                    onClick={() => confirmDelete(
                       `Hapus foto pemicu #${photo.trigger_number} (${new Date(photo.created_at).toLocaleString('id-ID')})?`,
+                      () => onDeleteUnpairedPhoto(photo.id),
                     )}
                     disabled={isDeletingPhotos}
                     title="Hapus foto ini"
@@ -359,6 +406,59 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Foto */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !isDeletingPhotos && setDeleteTarget(null)}
+        >
+          <div
+            className="rounded-xl border max-w-sm w-full p-5 shadow-2xl bg-slate-900 border-red-500/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-red-500/20 text-red-400">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-bold text-white">Hapus Foto?</h3>
+              </div>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeletingPhotos}
+                className="p-1 rounded hover:bg-slate-800 text-slate-400 disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed mb-4">
+              {deleteTarget.label}
+            </p>
+            {deleteError && (
+              <p className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeletingPhotos}
+                className="px-4 py-2 rounded text-sm font-semibold transition-colors cursor-pointer border bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeDelete}
+                disabled={isDeletingPhotos}
+                className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingPhotos ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { AlertTriangle, X, ArrowRight, Fingerprint } from 'lucide-react';
+import { AlertTriangle, X, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { MotionEvent, AccessLog } from '../types';
 

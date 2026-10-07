@@ -16,6 +16,12 @@ import {
   PirModeLog
 } from '../types';
 
+export interface KeyboxTemplateState {
+  scanned_at: string | null;
+  sensor_ids: number[];
+  orphan_ids: number[];
+}
+
 /**
  * Pesan yang layak ditampilkan dari error request: pesan validasi
  * pertama dari Laravel (422), atau pesan umum.
@@ -154,6 +160,19 @@ export const APIService = {
    */
   enrollFingerprint: async (id: number): Promise<void> => {
     await api.post('/keybox/command', { command: 'ENROLL', target: id });
+  },
+
+  getKeyboxTemplates: async (): Promise<KeyboxTemplateState> => {
+    const response = await api.get('/keybox/templates');
+    return response.data.data;
+  },
+
+  scanKeyboxTemplates: async (): Promise<void> => {
+    await api.post('/keybox/templates/scan');
+  },
+
+  deleteKeyboxTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/keybox/templates/${id}`);
   },
 
   setPIRMode: async (mode: PIRMode, duration_minutes?: number): Promise<void> => {

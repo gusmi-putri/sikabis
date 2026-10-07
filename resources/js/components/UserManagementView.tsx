@@ -40,7 +40,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   // State untuk modal Edit & Delete
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
   const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '' });
+  const [editActionError, setEditActionError] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [deleteActionError, setDeleteActionError] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   // Admin bisa melihat semua user (termasuk dirinya sendiri)
@@ -73,6 +75,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
   const handleEditClick = (u: User) => {
     setUserToEdit(u);
+    setEditActionError('');
     setEditFormData({
       name: u.name,
       username: u.username,
@@ -97,7 +100,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       await onUpdateUser(userToEdit.id, dataToUpdate);
       setUserToEdit(null);
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Gagal mengubah data user.');
+      setEditActionError(err?.response?.data?.message || 'Gagal mengubah data user.');
     } finally {
       setIsProcessingAction(false);
     }
@@ -106,14 +109,20 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
     setIsProcessingAction(true);
+    setDeleteActionError('');
     try {
       await onDeleteUser(userToDelete.id);
       setUserToDelete(null);
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Gagal menghapus user.');
+      setDeleteActionError(err?.response?.data?.message || 'Gagal menghapus user.');
     } finally {
       setIsProcessingAction(false);
     }
+  };
+
+  const openDeleteModal = (u: User) => {
+    setDeleteActionError('');
+    setUserToDelete(u);
   };
 
   return (
@@ -164,7 +173,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Contoh: Praka Budi"
+                  placeholder="Contoh: Piket Jaga"
                   className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 bg-black/20 border-white/10 text-slate-200"
                 />
               </div>
@@ -303,7 +312,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                         </button>
 
                         <button
-                          onClick={() => setUserToDelete(u)}
+                          onClick={() => openDeleteModal(u)}
                           disabled={u.id === currentUser.id}
                           title="Hapus User"
                           className={`p-1.5 rounded border transition-colors flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed bg-white/5 hover:bg-red-500/20 text-red-400 border-white/10 hover:border-red-500 ${u.id !== currentUser.id ? 'cursor-pointer' : ''}`}
@@ -337,6 +346,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
             </div>
             
             <form onSubmit={handleUpdateUser} className="space-y-4">
+              {editActionError && (
+                <div className="p-3 rounded border flex gap-2 text-xs bg-red-500/10 border-red-500/30 text-red-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {editActionError}
+                </div>
+              )}
               <div>
                 <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Nama Lengkap</label>
                 <input
@@ -409,11 +424,16 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               <h3 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Hapus Akun?</h3>
             </div>
             
-            <p className={`text-sm mb-5 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+            <p className={`text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
               Apakah Anda yakin ingin menghapus akun <strong>{userToDelete.name}</strong> (@{userToDelete.username})? Tindakan ini tidak dapat dibatalkan.
             </p>
+            {deleteActionError && (
+              <p className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+                {deleteActionError}
+              </p>
+            )}
 
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-3 justify-end mt-5">
               <button
                 onClick={() => setUserToDelete(null)}
                 disabled={isProcessingAction}

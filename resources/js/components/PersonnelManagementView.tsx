@@ -9,8 +9,9 @@
 import React, { useState } from 'react';
 import { Shield, Trash2, CheckCircle2, AlertTriangle, Edit2, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { Personnel, PersonnelInput, PersonnelStatus } from '../types';
+import { Personnel, PersonnelInput, PersonnelStatus, DeviceStatus } from '../types';
 import { PersonnelRegistrationCard } from './PersonnelRegistrationCard';
+import { KeyboxTemplatePanel } from './KeyboxTemplatePanel';
 import { apiErrorMessage } from '../services/api';
 
 interface PersonnelManagementViewProps {
@@ -19,6 +20,8 @@ interface PersonnelManagementViewProps {
   onCreate: (data: PersonnelInput) => Promise<void>;
   onDeactivate: (id: number) => Promise<void>;
   onUpdate: (id: number, data: PersonnelInput) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
+  isAdminPam?: boolean;
 }
 
 export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = ({
@@ -27,6 +30,8 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
   onCreate,
   onDeactivate,
   onUpdate,
+  onDirtyChange,
+  isAdminPam = false,
 }) => {
   const { isDark } = useTheme();
   const [personToRevoke, setPersonToRevoke] = useState<Personnel | null>(null);
@@ -105,7 +110,13 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
             personnelList={personnelList}
             keyboxStatus={keyboxStatus}
             onCreate={onCreate}
+            onDirtyChange={onDirtyChange}
           />
+          {isAdminPam && (
+            <div className="mt-5">
+              <KeyboxTemplatePanel />
+            </div>
+          )}
         </div>
 
         {/* Kolom Kanan: Tabel Data */}

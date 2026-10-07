@@ -26,6 +26,7 @@ class EnsureValidDeviceKey
         $key = $request->header('X-Device-Key') ?? $request->bearerToken();
 
         if (! $deviceId || ! $key) {
+            \Illuminate\Support\Facades\Log::error('401 Failed: dev=' . $deviceId . ' key=' . $key);
             abort(401, 'device_id/perangkat dan X-Device-Key/Bearer token wajib disertakan.');
         }
 
@@ -34,6 +35,7 @@ class EnsureValidDeviceKey
             ->first();
 
         if (! $device) {
+            \Illuminate\Support\Facades\Log::error('401 Failed DB: dev=' . $deviceId . ' key=' . $key);
             abort(401, 'Device tidak dikenal atau API key salah.');
         }
 

@@ -3,8 +3,9 @@
  * Root komponen untuk halaman Dashboard dengan Inertia.js
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { APIService } from '../services/api';
 
 // Layout
@@ -45,14 +46,19 @@ const EMPTY_DEVICE_STATUS: DeviceStatus = {
   device_id: '—',
   status: 'offline',
   pir_mode: 'ON',
+  auto_arm_at: null,
   flash_on: false,
   stream_url: null,
   last_seen: new Date(0).toISOString(),
-  auto_arm_at: null,
 };
+
+// Durasi idle sebelum session otomatis berakhir (milidetik)
+const IDLE_TIMEOUT_MS   = 15 * 60 * 1000;   // 15 menit
+const IDLE_WARNING_MS   = 14 * 60 * 1000;   // peringatan di menit ke-14
 
 export default function Dashboard() {
   const { isDark } = useTheme();
+  const { toast } = useToast();
 
   // ── Auth & Role ─────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -67,7 +73,30 @@ export default function Dashboard() {
   // ── Navigasi ───────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
 
+  // ── Unsaved changes guard (form Registrasi Personel) ────────
+  const [hasUnsavedForm, setHasUnsavedForm] = useState(false);
+  const [pendingTab, setPendingTab] = useState<NavTab | null>(null);
+
+  const handleSetActiveTab = useCallback((tab: NavTab) => {
+    if (hasUnsavedForm && tab !== activeTab) {
+      setPendingTab(tab);
+    } else {
+      setActiveTab(tab);
+    }
+  }, [hasUnsavedForm, activeTab]);
+
+  // ── Idle session timeout ────────────────────────────────────
+  const lastActivityRef = useRef(Date.now());
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
+  const [idleCountdown, setIdleCountdown] = useState(60);
+
   // ── Data State ─────────────────────────────────────────────
+  // Ref ini mencegah polling overwrite device status saat perintah PIR/flash
+  // sedang dalam penerbangan ke server. Tanpa ini, optimistic update langsung
+  // ditimpa balik oleh polling 2-detik sebelum server sempat diupdate.
+  const deviceCmdPendingRef = useRef(false);
+
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [accessLogs, setAccessLogs] = useState<AccessLog[]>([]);
   const [unpairedPhotos, setUnpairedPhotos] = useState<AccessPhoto[]>([]);
   const [motionEvents, setMotionEvents] = useState<MotionEvent[]>([]);
@@ -90,7 +119,13 @@ export default function Dashboard() {
         APIService.getUnpairedAccessPhotos().then(setUnpairedPhotos),
         APIService.getMotionEvents().then(setMotionEvents),
         APIService.getPersonnelList().then(setPersonnelList),
-        APIService.getDeviceStatus().then(setDeviceStatus),
+        // Cek flag DI DALAM .then(), bukan di luar. Kalau cek di luar,
+        // request yang sudah terlanjur dikirim sebelum klik tetap akan
+        // memanggil setDeviceStatus saat responsnya tiba, meskipun flag
+        // sudah diset true. Dengan cek di .then(), respons itu dibuang.
+        APIService.getDeviceStatus().then((status) => {
+          if (!deviceCmdPendingRef.current) setDeviceStatus(status);
+        }),
         APIService.getKeyboxStatus().then(setKeyboxStatus),
         APIService.getPirModeLogs().then(setPirModeLogs),
       ];
@@ -98,6 +133,7 @@ export default function Dashboard() {
         requests.push(APIService.getUsersList().then(setUsersList));
       }
       await Promise.all(requests);
+      setLastRefreshed(new Date());
     } catch (err) {
       if (!silent) setLoadError('Gagal memuat data dari server. Periksa koneksi ke backend Laravel.');
     } finally {
@@ -119,6 +155,40 @@ export default function Dashboard() {
     const interval = setInterval(() => refreshData(currentUser, true), 2000);
     return () => clearInterval(interval);
   }, [currentUser, refreshData]);
+
+  // ── Idle session timeout ────────────────────────────────────
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const resetIdle = () => { lastActivityRef.current = Date.now(); };
+    window.addEventListener('mousemove', resetIdle, { passive: true });
+    window.addEventListener('keydown',   resetIdle, { passive: true });
+    window.addEventListener('click',     resetIdle, { passive: true });
+    window.addEventListener('touchstart',resetIdle, { passive: true });
+
+    const check = setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      if (idle >= IDLE_TIMEOUT_MS) {
+        toast('Sesi berakhir karena tidak aktif.', 'warning');
+        handleLogout();
+      } else if (idle >= IDLE_WARNING_MS) {
+        const remaining = Math.ceil((IDLE_TIMEOUT_MS - idle) / 1000);
+        setIdleCountdown(remaining);
+        setShowIdleWarning(true);
+      } else {
+        setShowIdleWarning(false);
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(check);
+      window.removeEventListener('mousemove', resetIdle);
+      window.removeEventListener('keydown',   resetIdle);
+      window.removeEventListener('click',     resetIdle);
+      window.removeEventListener('touchstart',resetIdle);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   // ── Statistik (dihitung dari log 24 jam terakhir) ──────────
   const now = Date.now();
@@ -171,17 +241,25 @@ export default function Dashboard() {
   // ── Aksi: Ubah mode PIR ────────────────────────────────────
   const handleSetPIRMode = async (mode: PIRMode, durationMinutes?: number) => {
     const prevStatus = deviceStatus;
-    
-    const autoArmAt = mode === 'OFF' && durationMinutes 
+
+    const autoArmAt = mode === 'OFF' && durationMinutes
       ? new Date(Date.now() + durationMinutes * 60000).toISOString()
       : null;
 
     setDeviceStatus((prev) => ({ ...prev, pir_mode: mode, auto_arm_at: autoArmAt }));
+    deviceCmdPendingRef.current = true;
     try {
       await APIService.setPIRMode(mode, durationMinutes);
+      // Fetch status segar setelah server konfirmasi — jangan tunggu polling
+      const fresh = await APIService.getDeviceStatus();
+      setDeviceStatus(fresh);
       APIService.getPirModeLogs().then(setPirModeLogs);
-    } catch (err) {
+      toast(mode === 'ON' ? 'Sensor PIR diaktifkan.' : 'Sensor PIR dimatikan.', 'success');
+    } catch {
       setDeviceStatus(prevStatus);
+      toast('Gagal mengubah mode PIR. Coba lagi.', 'error');
+    } finally {
+      deviceCmdPendingRef.current = false;
     }
   };
 
@@ -189,10 +267,17 @@ export default function Dashboard() {
   const handleToggleFlash = async (on: boolean) => {
     const prevStatus = deviceStatus;
     setDeviceStatus((prev) => ({ ...prev, flash_on: on }));
+    deviceCmdPendingRef.current = true;
     try {
       await APIService.setFlash(on);
-    } catch (err) {
+      const fresh = await APIService.getDeviceStatus();
+      setDeviceStatus(fresh);
+      toast(on ? 'Flash LED dinyalakan.' : 'Flash LED dimatikan.', 'success');
+    } catch {
       setDeviceStatus(prevStatus);
+      toast('Gagal mengubah flash. Coba lagi.', 'error');
+    } finally {
+      deviceCmdPendingRef.current = false;
     }
   };
 
@@ -200,8 +285,10 @@ export default function Dashboard() {
   const handleKeyboxCommand = async (command: KeyboxCommand) => {
     try {
       await APIService.sendKeyboxCommand(command);
-    } catch (err) {
-      // Diam-diam gagal; device akan tetap kelihatan online/offline apa adanya.
+      const label = command === 'mute_alarm' ? 'Alarm dimatikan.' : 'Perintah kunci terkirim.';
+      toast(label, 'success');
+    } catch {
+      toast('Perintah gagal terkirim ke kotak kunci.', 'error');
     }
   };
 
@@ -241,18 +328,21 @@ export default function Dashboard() {
   const handleCreatePersonnel = async (data: PersonnelInput) => {
     await APIService.createPersonnel(data);
     if (currentUser) await refreshData(currentUser);
+    toast('Personel berhasil didaftarkan.', 'success');
   };
 
   // ── Aksi: Cabut akses personel ──────────────────────────────
   const handleDeactivatePersonnel = async (id: number) => {
     await APIService.deactivatePersonnel(id);
     if (currentUser) await refreshData(currentUser);
+    toast('Akses personel berhasil dicabut.', 'success');
   };
 
   // ── Aksi: Update data personel ───────────────────────────────
   const handleUpdatePersonnel = async (id: number, data: PersonnelInput) => {
     await APIService.updatePersonnel(id, data);
     if (currentUser) await refreshData(currentUser);
+    toast('Data personel berhasil diperbarui.', 'success');
   };
 
   // ── Aksi: Tambah akun piket baru (Admin PAM) ───────────────
@@ -260,24 +350,28 @@ export default function Dashboard() {
     await APIService.createPiketUser({ ...data, role: 'piket' });
     const updated = await APIService.getUsersList();
     setUsersList(updated);
+    toast('Akun piket berhasil dibuat.', 'success');
   };
 
   // ── Aksi: Toggle status aktif akun piket ───────────────────
   const handleToggleUserActive = async (userId: number) => {
     const updated = await APIService.toggleUserActiveStatus(userId);
     setUsersList((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+    toast(updated.is_active ? 'Akun diaktifkan.' : 'Akun dinonaktifkan.', 'info');
   };
 
   // ── Aksi: Update akun piket ────────────────────────────────
   const handleUpdateUser = async (userId: number, data: Partial<User>) => {
     const updated = await APIService.updatePiketUser(userId, data);
     setUsersList((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+    toast('Data akun berhasil diperbarui.', 'success');
   };
 
   // ── Aksi: Hapus akun piket ─────────────────────────────────
   const handleDeleteUser = async (userId: number) => {
     await APIService.deleteUser(userId);
     setUsersList((prev) => prev.filter((u) => u.id !== userId));
+    toast('Akun berhasil dihapus.', 'success');
   };
 
   // ── Render ─────────────────────────────────────────────────
@@ -316,10 +410,10 @@ export default function Dashboard() {
       {/* Kontainer Utama */}
       <div className="relative z-10 flex flex-row w-full min-h-screen">
         {/* Sidebar */}
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          userRole={currentUser.role} 
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={handleSetActiveTab}
+          userRole={currentUser.role}
         />
 
         {/* Main Column */}
@@ -329,6 +423,7 @@ export default function Dashboard() {
           operatorName={currentUser.name}
           operatorRole={currentUser.role}
           deviceStatus={deviceStatus}
+          lastRefreshed={lastRefreshed}
           onLogout={handleLogout}
         />
 
@@ -425,6 +520,8 @@ export default function Dashboard() {
               onCreate={handleCreatePersonnel}
               onDeactivate={handleDeactivatePersonnel}
               onUpdate={handleUpdatePersonnel}
+              onDirtyChange={setHasUnsavedForm}
+              isAdminPam={currentUser.role === 'admin_pam'}
             />
           )}
           
@@ -442,6 +539,79 @@ export default function Dashboard() {
         </main>
       </div>
       </div>
+      {/* Modal: Peringatan idle akan logout */}
+      {showIdleWarning && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`rounded-xl border max-w-sm w-full p-5 shadow-2xl ${
+            isDark ? 'bg-slate-900 border-amber-500/40' : 'bg-white border-amber-300'
+          }`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-full ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                <span className="text-lg">⏱</span>
+              </div>
+              <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                Sesi akan berakhir
+              </h3>
+            </div>
+            <p className={`text-sm leading-relaxed mb-5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+              Tidak ada aktivitas terdeteksi. Anda akan otomatis keluar dalam{' '}
+              <span className="font-bold text-amber-400">{idleCountdown} detik</span>.
+            </p>
+            <button
+              onClick={() => {
+                lastActivityRef.current = Date.now();
+                setShowIdleWarning(false);
+              }}
+              className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-sm font-semibold transition-colors cursor-pointer"
+            >
+              Saya masih di sini
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Konfirmasi navigasi dengan form belum tersimpan */}
+      {pendingTab !== null && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`rounded-xl border max-w-sm w-full p-5 shadow-2xl ${
+            isDark ? 'bg-slate-900 border-amber-500/40' : 'bg-white border-amber-300'
+          }`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-full ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                <span className="text-lg">⚠️</span>
+              </div>
+              <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                Form belum disimpan
+              </h3>
+            </div>
+            <p className={`text-sm leading-relaxed mb-5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+              Ada data yang belum disimpan di form registrasi personel. Yakin ingin meninggalkan halaman ini?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setPendingTab(null)}
+                className={`px-4 py-2 rounded text-sm font-semibold transition-colors cursor-pointer border ${
+                  isDark
+                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                    : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+                }`}
+              >
+                Kembali ke Form
+              </button>
+              <button
+                onClick={() => {
+                  setHasUnsavedForm(false);
+                  setActiveTab(pendingTab!);
+                  setPendingTab(null);
+                }}
+                className="px-4 py-2 rounded bg-amber-500 hover:bg-amber-400 text-white text-sm font-semibold transition-colors cursor-pointer"
+              >
+                Tinggalkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

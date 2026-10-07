@@ -43,22 +43,22 @@
    BAGIAN 1  -  KONFIGURASI YANG PERLU ANDA ISI
    ================================================================== */
 
-const char* WIFI_SSID  = "Lab Modern Alkomlek";
-const char* WIFI_SANDI = "prc_1077";
+const char* WIFI_SSID  = "RENDAL";
+const char* WIFI_SANDI = "Komlekad42";
 
 // Selama false, kamera tetap memotret dan melaporkan ukuran fotonya
 // di Serial Monitor, tapi tidak mengirim ke mana pun. Berguna untuk
 // menguji rantai pemicu sebelum server rekan Anda siap.
 const bool  KIRIM_KE_SERVER = true;
-const char* SERVER_URL_FOTO = "http://192.168.1.243/sikabis/public/api/device/keybox/foto";
-const char* SERVER_TOKEN    = "APIKEY-KAMERA-BOARD-B";
+const char* SERVER_URL_FOTO = "http://192.168.1.3/sikabis/public/api/device/keybox/foto";
+const char* SERVER_TOKEN    = "4czIe0msRd2AVv4SKoV3eWvY792uCTcF5kkp69Z6";
 const char* ID_PERANGKAT    = "kotak-kunci-cam-01";
 
 // Board B tidak punya alasan lain untuk menghubungi server selain saat
 // memotret -- kalau lama tidak ada gerakan, dashboard salah kira board
 // ini mati padahal cuma menunggu. Heartbeat kosong ini yang menjaga
 // status "online" tetap benar walau tidak ada pemicu sama sekali.
-const char* SERVER_URL_HEARTBEAT = "http://192.168.1.243/sikabis/public/api/device/heartbeat";
+const char* SERVER_URL_HEARTBEAT = "http://192.168.1.3/sikabis/public/api/device/heartbeat";
 const unsigned long JEDA_HEARTBEAT = 20000;
 
 /* Siaran langsung. Dimatikan dengan mengubah baris ini ke false -
@@ -127,6 +127,14 @@ volatile unsigned long bingkaiDisiarkan = 0;
 
 const unsigned long JEDA_COBA_WIFI = 15000;
 
+/* Jeda minimum antar foto berurutan. OV2640 butuh beberapa bingkai
+   setelah foto pertama agar AEC (auto-exposure) konvergen kembali;
+   tanpa jeda ini, spam tempel jari menghasilkan foto gelap/kosong
+   karena sensor masih menyesuaikan eksposur dari foto sebelumnya.
+   1000 ms setara dengan ~15-20 bingkai pada resolusi SVGA. */
+const unsigned long JEDA_MIN_ANTAR_POTRET = 1000;
+unsigned long       potretTerakhir        = 0;
+
 /* Pengiriman berjalan di task sendiri (Bagian 6), jadi timeout yang
    panjang tidak lagi membekukan siaran atau menunda foto berikutnya.
    Timeout 5 detik yang lama justru terlalu ketat: balasan yang telat
@@ -141,6 +149,21 @@ const unsigned long TIMEOUT_HTTP = 10000;
    keadaan tidak wajar, misalnya kabel pemicu tersangkut tinggi terus. */
 const unsigned long LEBAR_MIN_PULSA = 15;
 const unsigned long LEBAR_MAX_PULSA = 500;
+
+/* Satu foto yang menunggu dikirim (dipakai di Bagian 6).
+
+   HARUS didefinisikan di sini, SEBELUM fungsi pertama di berkas ini.
+   Arduino IDE diam-diam menyisipkan deklarasi semua fungsi tepat di
+   atas fungsi pertama (garis() di bawah). Kalau struct ini baru
+   muncul di Bagian 6, deklarasi kirimFotoSekali(const FotoTertunda&)
+   dkk. tersisip sebelum struct-nya dikenal, dan kompilasi gagal
+   dengan "'FotoTertunda' does not name a type". */
+struct FotoTertunda {
+  unsigned long nomor;
+  unsigned long waktu;      // millis() saat memotret
+  uint8_t      *data;       // salinan JPEG, milik antrean
+  size_t        panjang;
+};
 
 void garis() {
   Serial.println(F("-----------------------------------------------------"));
@@ -215,14 +238,11 @@ bool mulaiKamera() {
   cfg.pin_vsync = VSYNC_GPIO_NUM;
   cfg.pin_href  = HREF_GPIO_NUM;
 
-  // Nama field ini berganti antara core 2.x dan 3.x
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  // Nama baru (sccb). Tersedia sejak core 2.0.x versi akhir (termasuk
+  // 2.0.17 yang dipakai di laptop Richard) dan wajib di core 3.x. Nama
+  // lama (sscb) hanya memunculkan peringatan "deprecated".
   cfg.pin_sccb_sda = SIOD_GPIO_NUM;
   cfg.pin_sccb_scl = SIOC_GPIO_NUM;
-#else
-  cfg.pin_sscb_sda = SIOD_GPIO_NUM;
-  cfg.pin_sscb_scl = SIOC_GPIO_NUM;
-#endif
 
   cfg.pin_pwdn  = PWDN_GPIO_NUM;
   cfg.pin_reset = RESET_GPIO_NUM;
@@ -301,12 +321,7 @@ bool mulaiKamera() {
                 Board A berdasarkan jam itu, bukan jam tiba.
    ================================================================== */
 
-struct FotoTertunda {
-  unsigned long nomor;
-  unsigned long waktu;      // millis() saat memotret
-  uint8_t      *data;       // salinan JPEG, milik antrean
-  size_t        panjang;
-};
+// struct FotoTertunda didefinisikan di Bagian 3 - lihat alasannya di sana.
 
 // Satu foto SVGA sekitar 30-60 KB, jadi 10 foto muat lega di PSRAM
 // 4 MB. Tanpa PSRAM, salinannya makan heap biasa - cukup 2 saja.
@@ -885,7 +900,19 @@ bool ambilPemicu() {
 
 void loop() {
   while (ambilPemicu()) {
+    /* Tunda potret berikutnya kalau jarak ke foto terakhir masih di
+       bawah JEDA_MIN_ANTAR_POTRET. Ini memberi sensor OV2640 cukup
+       waktu untuk menyelesaikan konvergensi AEC setelah foto sebelumnya,
+       sehingga foto kedua dan seterusnya tidak keluar gelap atau kosong
+       saat jari di-spam berulang kali. */
+    if (potretTerakhir > 0) {
+      unsigned long berlalu = millis() - potretTerakhir;
+      if (berlalu < JEDA_MIN_ANTAR_POTRET) {
+        delay(JEDA_MIN_ANTAR_POTRET - berlalu);
+      }
+    }
     potret("pemicu Board A");
+    potretTerakhir = millis();
   }
   layaniPerintah();
   layaniWiFi();
