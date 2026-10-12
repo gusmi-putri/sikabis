@@ -70,6 +70,7 @@ export interface MotionEvent {
   id: number;
   image_path: string | null;        // path foto dari ESP32-CAM (nullable)
   pir_mode: PIRMode;                // Mode PIR saat event terjadi
+  sensor_label: 'Nyala' | 'Mati';   // Teks tampilan turunan dari pir_mode, jangan ditulis ulang manual
   device_id: string;
   created_at: string;               // ISO 8601 string
 }
@@ -80,6 +81,7 @@ export interface DeviceStatus {
   device_id: string;
   status: DeviceOnlineStatus;       // 'online' | 'offline'
   pir_mode: PIRMode;                // Mode PIR aktif saat ini
+  sensor_label: 'Nyala' | 'Mati';   // Teks tampilan turunan dari pir_mode, jangan ditulis ulang manual
   flash_on: boolean;                // Status LED flash ESP32-CAM (tersinkron dua arah dgn Telegram)
   stream_url: string | null;        // URL MJPEG live stream, dilaporkan device sendiri via heartbeat
   last_seen: string;                // ISO 8601 string
@@ -115,6 +117,7 @@ export interface PirModeLog {
   id: number;
   device_id: string;
   pir_mode: PIRMode;                // 'ON' (nyala) | 'OFF' (mati)
+  sensor_label: 'Nyala' | 'Mati';   // Teks tampilan turunan dari pir_mode, jangan ditulis ulang manual
   source: 'web' | 'telegram';
   changed_by: string | null;        // nama user, null kalau dari Telegram
   created_at: string;               // ISO 8601 string

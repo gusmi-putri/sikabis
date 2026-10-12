@@ -1,9 +1,11 @@
 /**
  * SI-JAGA — PIRControlPanel.tsx
- * Panel kontrol mode PIR (ARMED / ACTIVITY) + status device ESP32.
- * ARMED    = Gerakan memicu foto + notifikasi Telegram.
- * ACTIVITY = PIR aktif secara fisik, tapi foto & notifikasi dimatikan
- *            (dipakai saat ada kegiatan resmi di gudang).
+ * Panel kontrol status sensor PIR (Nyala / Mati) + status device ESP32.
+ * Nyala = Gerakan memicu foto + notifikasi Telegram.
+ * Mati  = PIR aktif secara fisik, tapi foto & notifikasi dimatikan
+ *         (dipakai saat ada kegiatan resmi di gudang).
+ * Nilai mentah di database tetap ON/OFF (lihat PIRMode di types.ts),
+ * "Nyala"/"Mati" di sini murni teks tampilan.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -117,7 +119,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
               Kontrol Sensor PIR Gudang
             </h3>
             <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Ubah mode deteksi gerakan secara manual
+              Ubah status sensor gerakan secara manual
             </p>
           </div>
         </div>
@@ -153,7 +155,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
                   ? isDark ? 'text-amber-400' : 'text-amber-700'
                   : isDark ? 'text-red-400' : 'text-red-600'
                 }`}>
-                {isArmed ? 'AKTIF' : 'MATI'}
+                {isArmed ? 'NYALA' : 'MATI'}
               </div>
           </div>
           
@@ -184,7 +186,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
             <span>Nyalakan Sensor</span>
             {isArmed && (
               <span className={`ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-white/30 text-white border border-white/50'}`}>
-                AKTIF
+                NYALA
               </span>
             )}
           </div>

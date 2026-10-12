@@ -16,6 +16,7 @@ class MotionEventResource extends JsonResource
             'id' => $this->id,
             'image_path' => $this->image_path,
             'pir_mode' => $this->pir_mode,
+            'sensor_label' => $this->pir_mode === 'ON' ? 'Nyala' : 'Mati',
             'device_id' => $this->device_id,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

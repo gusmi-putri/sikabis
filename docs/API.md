@@ -14,7 +14,12 @@ Ada **dua jalur auth berbeda** — lihat [ARSITEKTUR.md](ARSITEKTUR.md#dua-jalur
 Authorization: Bearer <token>
 ```
 
-Token didapat dari `POST /login`. Endpoint yang butuh ini ditandai 🔐 di tabel bawah. Endpoint bertanda 🔐👑 hanya bisa diakses role `admin_pam`.
+Token didapat dari `POST /login`. Ada tiga role: `admin_pam` (penuh), `piket` (operasional, tidak bisa kelola personel/akun), dan `pimpinan` (**hanya bisa melihat** — tidak bisa mengubah status sensor, flash, maupun kontrol kotak kunci; akun dibuat Admin PAM lewat Manajemen User).
+
+Penanda akses di tabel bawah:
+- 🔐 — semua role yang sudah login (termasuk `pimpinan`)
+- 🔐⚙️ — hanya `admin_pam` atau `piket` (kontrol perangkat fisik; `pimpinan` ditolak `403`)
+- 🔐👑 — hanya `admin_pam`
 
 ### B. Perangkat IoT (Device API Key)
 
@@ -66,7 +71,7 @@ Riwayat deteksi PIR + foto, terbaru duluan.
 Daftar personel terdaftar akses key box.
 
 ### `GET /users` 🔐👑
-Daftar akun user (admin + piket).
+Daftar seluruh akun user (`admin_pam`, `piket`, `pimpinan`).
 
 ---
 
@@ -81,6 +86,7 @@ Status live perangkat (mengembalikan objek tunggal — device pertama di tabel).
     "device_id": "GUDANG-01",
     "status": "online",
     "pir_mode": "ON",
+    "sensor_label": "Nyala",
     "flash_on": false,
     "stream_url": "http://192.168.1.17/stream",
     "last_seen": "2026-09-17T15:02:03+00:00"
@@ -88,31 +94,40 @@ Status live perangkat (mengembalikan objek tunggal — device pertama di tabel).
 }
 ```
 
-### `POST /device/pir-mode` 🔐
-Nyalakan/matikan sensor PIR dari web. Mencatat entri baru ke `pir_mode_logs` (source: `web`) kalau nilainya benar-benar berubah.
+### `POST /device/pir-mode` 🔐⚙️
+Nyalakan/matikan sensor PIR dari web. Mencatat entri baru ke `pir_mode_logs` (source: `web`) kalau nilainya benar-benar berubah. `pimpinan` ditolak `403` — role ini hanya boleh melihat.
 
 ```json
 { "mode": "ON" }   // atau "OFF"
 ```
 
-### `POST /device/flash` 🔐
-Nyalakan/matikan flash LED ESP32-CAM. Perubahan diambil firmware lewat polling `GET /device/command`.
+### `POST /device/flash` 🔐⚙️
+Nyalakan/matikan flash LED ESP32-CAM. Perubahan diambil firmware lewat polling `GET /device/command`. `pimpinan` ditolak `403`.
 
 ```json
 { "on": true }
 ```
 
+### `POST /keybox/command` 🔐⚙️
+Kirim perintah ke kotak kunci (Board A): `MUTE_ALARM`, `FORCE_LOCK`, `TEST_BUZZER`, `TEST_TRIGGER`, atau `RESET_SENSOR`. Diambil Board A lewat polling `GET /device/keybox/command`. `pimpinan` ditolak `403`. Sengaja tidak ada perintah buka solenoid dari jarak jauh — keputusan keamanan, bukan keterbatasan teknis.
+
+```json
+{ "command": "MUTE_ALARM" }
+```
+
 ### `GET /device/pir-mode-logs` 🔐
-Riwayat 100 perubahan status PIR terakhir, dari web maupun Telegram.
+Riwayat 100 perubahan status sensor terakhir, dari web maupun Telegram.
 
 ```json
 {
   "data": [
-    { "id": 2, "device_id": "GUDANG-01", "pir_mode": "ON", "source": "telegram", "changed_by": null, "created_at": "..." },
-    { "id": 1, "device_id": "GUDANG-01", "pir_mode": "OFF", "source": "web", "changed_by": "Letkol Admin PAM", "created_at": "..." }
+    { "id": 2, "device_id": "GUDANG-01", "pir_mode": "ON", "sensor_label": "Nyala", "source": "telegram", "changed_by": null, "created_at": "..." },
+    { "id": 1, "device_id": "GUDANG-01", "pir_mode": "OFF", "sensor_label": "Mati", "source": "web", "changed_by": "Letkol Admin PAM", "created_at": "..." }
   ]
 }
 ```
+
+> `pir_mode` (`ON`/`OFF`) tetap nilai mentah untuk logika; `sensor_label` ("Nyala"/"Mati") adalah teks tampilan turunan, ikut disertakan di `device-status`, `motion-events`, dan `pir-mode-logs` supaya frontend tidak menulis ulang pemetaannya di banyak tempat.
 
 ---
 
@@ -137,23 +152,23 @@ Cabut akses: status `inactive`, `fingerprint_id` dilepas agar bisa dipakai lagi.
 
 ---
 
-## Manajemen User / Akun Piket (Admin PAM)
+## Manajemen User / Akun (Admin PAM)
 
 ### `POST /users` 🔐👑
-Buat akun piket baru. Password otomatis di-hash.
+Buat akun baru, role `piket` atau `pimpinan`.
 
 ```json
 { "name": "Praka Budi", "username": "budi", "password": "min4karakter", "role": "piket" }
 ```
 
 ### `PUT /users/{id}` 🔐👑
-Update akun piket. `password` opsional — kosongkan untuk tidak mengubah. **Hanya bisa untuk akun role `piket`**, mengedit akun `admin_pam` lain akan ditolak `403`.
+Update akun. `password` opsional — kosongkan untuk tidak mengubah. Bebas untuk akun `piket`/`pimpinan`, dan untuk profil sendiri; mengedit akun `admin_pam` **lain** ditolak `403`.
 
 ### `DELETE /users/{id}` 🔐👑
-Hapus akun piket. Sama seperti di atas, hanya untuk role `piket`.
+Hapus akun. Ditolak `403` kalau target berrole `admin_pam` — Admin PAM tidak bisa saling menghapus, mencegah situasi tanpa admin aktif sama sekali.
 
 ### `PATCH /users/{id}/toggle-active` 🔐👑
-Aktifkan/nonaktifkan akun piket.
+Aktifkan/nonaktifkan akun `piket` atau `pimpinan`. Sama seperti hapus, akun `admin_pam` ditolak `403`.
 
 ---
 
@@ -188,7 +203,7 @@ Upload foto motion event. `multipart/form-data`, bukan JSON.
 | Field | Tipe | Keterangan |
 |---|---|---|
 | `device_id` | string | wajib |
-| `pir_mode` | string | wajib, `ARMED`/`ACTIVITY` |
+| `pir_mode` | string | wajib, `ON`/`OFF` |
 | `photo` | file | wajib, image, maks 5MB |
 
 Response `201`: `{ "id": 42 }`.

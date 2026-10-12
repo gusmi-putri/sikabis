@@ -1,7 +1,7 @@
 /**
  * SI-JAGA — MotionEventPanel.tsx
  * Panel "Motion Event Terbaru" untuk dashboard (5 event terakhir).
- * Kolom: Waktu | Foto | Mode PIR saat event terjadi
+ * Kolom: Waktu | Foto | Status sensor saat event terjadi
  */
 
 import React, { useState } from 'react';
@@ -58,7 +58,7 @@ export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) =>
             <tr className={`text-[11px] font-mono border-b ${isDark ? 'border-white/10 text-slate-300 bg-white/5' : 'border-slate-200 text-slate-600 bg-slate-50'}`}>
               <th className="py-2.5 px-4">Waktu</th>
               <th className="py-2.5 px-4">Foto</th>
-              <th className="py-2.5 px-4">Mode PIR</th>
+              <th className="py-2.5 px-4">Status Sensor</th>
             </tr>
           </thead>
           <tbody className={`divide-y text-xs ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
@@ -108,7 +108,7 @@ export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) =>
                       )}
                     </td>
 
-                    {/* Mode PIR */}
+                    {/* Status Sensor */}
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono font-semibold border ${
                         isArmed

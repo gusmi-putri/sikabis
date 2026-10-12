@@ -1,7 +1,7 @@
 /**
  * SI-JAGA — PirModeLogPanel.tsx
- * Riwayat nyala/mati sensor PIR, dari web (Admin PAM) maupun Telegram,
- * supaya operator/admin bisa memantau kapan & oleh siapa diubah.
+ * Riwayat status sensor (nyala/mati), dari web (Admin PAM/Piket) maupun
+ * Telegram, supaya operator/admin bisa memantau kapan & oleh siapa diubah.
  */
 
 import React from 'react';
@@ -37,7 +37,7 @@ export const PirModeLogPanel: React.FC<PirModeLogPanelProps> = ({ logs }) => {
         </div>
         <div>
           <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            Riwayat Nyala/Mati Sensor PIR
+            Riwayat Status Sensor
           </h3>
           <p className={`text-[11px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Termasuk perubahan lewat Telegram

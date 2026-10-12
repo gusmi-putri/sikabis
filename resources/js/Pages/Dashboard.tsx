@@ -167,7 +167,7 @@ export default function Dashboard() {
     ).length,
   };
 
-  // ── Ada motion event baru saat ARMED? atau Alarm Fingerprint? (untuk AlertBanner) ──
+  // ── Ada motion event baru saat sensor Nyala? atau Alarm Fingerprint? (untuk AlertBanner) ──
   const latestMotion = motionEvents[0] ?? null;
   const hasMotionAlert =
     latestMotion !== null &&
@@ -200,7 +200,7 @@ export default function Dashboard() {
   // ── Kamera kotak kunci (Board B), dipakai panel live feed-nya ──
   const keyboxCam = keyboxStatus.find((d) => d.device_id === 'kotak-kunci-cam-01') ?? null;
 
-  // ── Aksi: Ubah mode PIR ────────────────────────────────────
+  // ── Aksi: Ubah status sensor PIR ────────────────────────────
   const handleSetPIRMode = async (mode: PIRMode, durationMinutes?: number) => {
     const prevStatus = deviceStatus;
 

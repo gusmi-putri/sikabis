@@ -35,7 +35,7 @@ class UserController extends Controller
 
     public function toggleActive(User $user)
     {
-        $this->ensurePiket($user);
+        $this->ensureNotAdminPam($user);
 
         $user->update(['is_active' => ! $user->is_active]);
 
@@ -44,6 +44,13 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        // Admin PAM boleh mengedit profilnya sendiri, tapi tidak boleh
+        // mengubah akun admin_pam LAIN (termasuk menaikkan role orang lain
+        // jadi admin_pam lewat sini).
+        if ($user->role === 'admin_pam' && $request->user()?->id !== $user->id) {
+            abort(403, 'Akun Admin PAM lain tidak bisa diubah.');
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
@@ -64,7 +71,7 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        $this->ensurePiket($user);
+        $this->ensureNotAdminPam($user);
 
         $user->delete();
 
@@ -72,9 +79,10 @@ class UserController extends Controller
     }
 
     /**
-     * Admin tidak boleh menghapus atau menonaktifkan akun admin_pam lain.
+     * Admin PAM boleh mengelola akun piket dan pimpinan, tapi tidak boleh
+     * menghapus atau menonaktifkan akun admin_pam lain.
      */
-    private function ensurePiket(User $user): void
+    private function ensureNotAdminPam(User $user): void
     {
         if ($user->role === 'admin_pam') {
             abort(403, 'Akun Admin PAM tidak bisa dihapus atau dinonaktifkan.');

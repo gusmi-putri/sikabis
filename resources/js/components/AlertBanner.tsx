@@ -1,7 +1,7 @@
 /**
  * SI-JAGA — AlertBanner.tsx
  * Slim notification bar yang muncul di atas dashboard saat ada
- * motion event baru (dalam 10 menit terakhir) saat mode ARMED.
+ * motion event baru (dalam 10 menit terakhir) saat sensor Nyala.
  * Desain: satu baris, mencolok, tapi tidak memakan banyak ruang.
  */
 

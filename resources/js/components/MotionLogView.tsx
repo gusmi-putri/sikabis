@@ -192,7 +192,7 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({
                         {event.device_id}
                       </td>
 
-                      {/* Mode PIR */}
+                      {/* Status Sensor */}
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold font-mono border ${
                           isArmed

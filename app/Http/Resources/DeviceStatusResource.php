@@ -16,6 +16,10 @@ class DeviceStatusResource extends JsonResource
             'device_id' => $this->device_id,
             'status' => $this->status,
             'pir_mode' => $this->pir_mode,
+            // Nilai mentah ON/OFF dipakai frontend untuk logika (tombol aktif/tidak),
+            // sensor_label untuk teks yang ditampilkan -- supaya "Nyala"/"Mati" tidak
+            // ditulis ulang di setiap komponen yang menampilkan status sensor.
+            'sensor_label' => $this->pir_mode === 'ON' ? 'Nyala' : 'Mati',
             'flash_on' => (bool) $this->flash_on,
             'stream_url' => $this->stream_url,
             'last_seen' => $this->last_seen?->toIso8601String(),

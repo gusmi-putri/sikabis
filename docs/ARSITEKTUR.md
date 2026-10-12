@@ -28,8 +28,22 @@ API di `routes/api.php` punya dua kelompok endpoint dengan mekanisme auth yang *
 
 - Login via `POST /api/login` mengembalikan personal access token (Sanctum).
 - Setiap request berikutnya menyertakan `Authorization: Bearer <token>`.
-- Middleware: `auth:sanctum`, plus `role:admin_pam` untuk endpoint khusus admin.
+- Middleware: `auth:sanctum`, plus `role:admin_pam,piket` untuk kontrol perangkat fisik dan `role:admin_pam` untuk manajemen personel/akun. Lihat [Role dan Hak Akses](#role-dan-hak-akses).
 - Dipakai untuk semua endpoint dashboard: data log, manajemen personel/user, kontrol perangkat dari UI.
+
+## Role dan Hak Akses
+
+Tiga role di tabel `users`, dicek backend lewat middleware `EnsureUserHasRole` (`role:<daftar>` di `routes/api.php`) — bukan cuma disembunyikan di UI:
+
+| Role | Lihat dashboard/log | Kontrol sensor PIR, flash, kotak kunci | Kelola personel & akun |
+|---|---|---|---|
+| `admin_pam` | ✅ | ✅ | ✅ |
+| `piket` | ✅ | ✅ | ❌ |
+| `pimpinan` | ✅ (termasuk live stream) | ❌ — ditolak `403` di backend | ❌ |
+
+Frontend menyesuaikan tampilan untuk `pimpinan`: `Dashboard.tsx` menukar panel kontrol (`PIRControlPanel`, `DeviceStatusPanel`, `LiveCameraPanel`) dengan `ExecutiveHardwareSummary` yang murni ringkasan tanpa tombol aksi, supaya tidak menampilkan kontrol yang akan ditolak backend.
+
+Admin PAM mengelola akun lewat **Manajemen User**: boleh membuat/mengubah/menghapus/menonaktifkan akun `piket` dan `pimpinan`, boleh mengubah profil sendiri, tapi **tidak** bisa mengubah, menghapus, atau menonaktifkan akun `admin_pam` lain (`UserController::ensureNotAdminPam`) — mencegah situasi di mana sistem kehilangan semua admin aktif.
 
 ### 2. Perangkat IoT (ESP32) — API key statis per device
 
@@ -65,22 +79,22 @@ ESP32 heartbeat rutin tiap 30 detik ──POST /api/device/heartbeat──►  D
 
 | Tabel | Fungsi |
 |---|---|
-| `users` | Akun login web (`role`: `admin_pam` atau `piket`) |
+| `users` | Akun login web (`role`: `admin_pam`, `piket`, atau `pimpinan`) |
 | `personnel` | Personel kotak kunci: nama, pangkat/NRP, dan ID sidik jari (1-127) di sensor Board A |
 | `access_logs` | Riwayat percobaan akses kotak kunci; `personnel_id` = pemilik ID saat kejadian |
 | `access_photos` | Foto kamera kotak kunci, dipasangkan ke `access_logs` |
 | `motion_events` | Riwayat deteksi PIR + foto dari ESP32-CAM |
-| `device_statuses` | Status live tiap perangkat (online/offline, mode PIR, flash, stream URL, API key) |
+| `device_statuses` | Status live tiap perangkat (online/offline, status PIR, flash, stream URL, API key) |
 | `pir_mode_logs` | Riwayat perubahan nyala/mati sensor PIR, dengan sumber (`web`/`telegram`) dan siapa yang mengubah |
 
-## Mode PIR: ARMED vs ACTIVITY
+## Status Sensor: Nyala vs Mati
 
-Nilai `pir_mode` di database tetap `ARMED`/`ACTIVITY` (historis), tapi **secara konsep sekarang ini adalah saklar nyala/mati sederhana**, bukan dua mode berbeda:
+Nilai `pir_mode` di database adalah `ON`/`OFF` (kolom ini sempat bernama konsep `ARMED`/`ACTIVITY` di awal pengembangan, sudah diubah lewat migration `change_pir_mode_to_on_off`). Secara konsep ini **saklar nyala/mati sederhana**, bukan dua mode berbeda:
 
-- `ARMED` = sensor nyala → gerakan memicu foto, upload ke dashboard, DAN notifikasi Telegram.
-- `ACTIVITY` = sensor mati → tidak ada reaksi sama sekali terhadap gerakan (baik ke Telegram maupun dashboard).
+- `ON` = sensor nyala → gerakan memicu foto, upload ke dashboard, DAN notifikasi Telegram.
+- `OFF` = sensor mati → tidak ada reaksi sama sekali terhadap gerakan (baik ke Telegram maupun dashboard).
 
-UI web menampilkan ini sebagai "Nyalakan Sensor" / "Matikan Sensor", bukan istilah ON/OFF, untuk menghindari kebingungan operator.
+UI web dan seluruh teks yang dibaca operator menampilkan ini sebagai "Nyala"/"Mati" atau "Nyalakan Sensor"/"Matikan Sensor" — kata "mode" sengaja dihindari karena ini saklar, bukan dua perilaku berbeda. `pir_mode` mentah (`ON`/`OFF`) tetap dipakai untuk logika; API menyertakan field turunan `sensor_label` ("Nyala"/"Mati") di `device-status`, `motion-events`, dan `pir-mode-logs` supaya frontend tidak perlu menulis ulang pemetaannya (lihat [API.md](API.md)).
 
 ## Penyimpanan Foto
 
@@ -90,12 +104,14 @@ Foto motion event diupload ESP32 sebagai multipart form-data ke `POST /api/devic
 
 ## Kotak Kunci Sidik Jari
 
-Kotak kunci terdiri dari dua board yang berdiri sendiri: Board A (sensor AS608 + solenoid) mengirim log ke `POST /api/device/keybox/log`, Board B (ESP32-CAM) memotret saat jari menempel dan mengirim foto ke `POST /api/device/keybox/foto`. Server memasangkan foto dengan log berdasarkan jam kedatangan (lihat [API.md](API.md#kotak-kunci-dua-board)).
+Kotak kunci terdiri dari dua board yang berdiri sendiri: Board A (sensor AS608 + solenoid) mengirim log ke `POST /api/device/keybox/log`, Board B (ESP32-CAM) memotret saat jari menempel dan mengirim foto ke `POST /api/device/keybox/foto`. Server memasangkan foto dengan log berdasarkan waktu kejadian (`umur_ms`), bukan jam tiba (lihat [API.md](API.md#kotak-kunci-dua-board)).
 
-**Pendaftaran sidik jari tidak lewat web.** Perangkat pintu sengaja tidak menerima perintah dari jaringan. Alurnya:
+**Pendaftaran dan pencabutan sidik jari sudah tersambung dua arah lewat web**, sudah diuji dan berjalan:
 
-1. Petugas mendaftarkan jari di Board A lewat Serial Monitor (perintah `D`, lalu nomor ID 1-127).
-2. Admin PAM mencatat nama, pangkat/NRP, dan nomor ID yang sama di menu **Manajemen Akses**.
-3. Mencabut akses di web melepas ID dari personel itu; **template di sensor tetap harus dihapus di Board A**, karena selama masih tersimpan jari itu tetap bisa membuka kotak.
+- **Arah web → sensor**: Admin PAM mencatat/mencabut personel di menu **Manajemen Akses**. `PersonnelController` menulis perintah `ENROLL`/`DELETE` beserta target ID ke kolom `keybox_command`/`keybox_command_target` di `device_statuses`. Board A mengambilnya lewat polling `GET /api/device/keybox/command`, lalu menjalankan proses tempel-jari dua kali secara fisik di sensor AS608 (perintah dari jaringan tidak bisa membuka solenoid, hanya memicu mode *enroll*/*delete* di sensor).
+- **Arah sensor → web**: selagi proses berjalan, Board A melapor tiap tahap ("Tempelkan jari", "Angkat jari...", "Berhasil disimpan", dst) lewat `POST /api/device/keybox/enroll-status`, ditampilkan live di form registrasi supaya operator tidak perlu membuka Serial Monitor.
+- Hasil tiap percobaan akses (cocok/tidak) tetap lewat jalur terpisah `POST /api/device/keybox/log` seperti dijelaskan di atas — bukan bagian dari alur enroll/delete.
 
-Setiap log menyimpan `personnel_id` pemilik ID saat kejadian, sehingga riwayat lama tidak berpindah nama ketika nomor ID dipakai ulang oleh personel lain.
+**Keputusan keamanan yang disengaja:** tidak ada perintah buka solenoid dari jarak jauh. Perintah dari web hanya memicu mode pendaftaran/penghapusan template, bukan membuka kunci — jari yang sah secara fisik tetap wajib ditempelkan di sensor.
+
+Setiap log menyimpan `personnel_id` pemilik ID saat kejadian, sehingga riwayat lama tidak berpindah nama ketika nomor ID dipakai ulang oleh personel lain. Catatan operasional: mencabut akses di web melepas `fingerprint_id` dari personel (lewat `deactivate()`) **dan** mengirim perintah `DELETE` ke Board A, tapi kalau sebuah ID pernah didaftarkan di luar alur ini (misalnya langsung lewat Serial Monitor di masa lalu, atau row personel-nya dihapus manual dari database), template-nya bisa tertinggal di sensor tanpa pemilik di tabel — log percobaan dengan ID itu akan tampil "Tidak dikenal" padahal solenoid tetap terbuka.

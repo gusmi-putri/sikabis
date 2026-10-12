@@ -16,6 +16,7 @@ class PirModeLogResource extends JsonResource
             'id' => $this->id,
             'device_id' => $this->device_id,
             'pir_mode' => $this->pir_mode,
+            'sensor_label' => $this->pir_mode === 'ON' ? 'Nyala' : 'Mati',
             'source' => $this->source,
             'changed_by' => $this->changed_by,
             'created_at' => $this->created_at?->toIso8601String(),
