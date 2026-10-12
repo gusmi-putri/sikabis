@@ -1,6 +1,6 @@
 /**
- * SI-JAGA — Dashboard.tsx (Migrasi dari App.tsx)
- * Root komponen untuk halaman Dashboard dengan Inertia.js
+ * SI-JAGA — Dashboard.tsx
+ * Komponen utama halaman Dashboard SI-JAGA.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -253,8 +253,6 @@ export default function Dashboard() {
       toast('Perintah gagal terkirim ke kotak kunci.', 'error');
     }
   };
-
-  // Fungsi enroll jari dihapus (sudah otomatis lewat form Manajemen Personel)
 
   // ── Aksi: Logout ───────────────────────────────────────────
   const handleLogout = async () => {

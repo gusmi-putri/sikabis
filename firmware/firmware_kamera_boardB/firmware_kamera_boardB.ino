@@ -1,35 +1,19 @@
 /* ==================================================================
-   FIRMWARE BOARD B  -  KAMERA
-   Pengamanan Kotak Kunci  |  Bengpuskomlekad  |  Richard
+   FIRMWARE BOARD B  -  KAMERA PENGAWAS KOTAK KUNCI
+   Bengpuskomlekad  |  Universitas Pertahanan RI
 
-   Board B punya dua tugas, dan urutan kepentingannya tidak boleh
-   dibalik:
+   Fungsi Board B (ESP32-CAM):
+     1. Menangkap foto saat ada percobaan akses sidik jari pada Board A,
+        lalu mengunggah foto ke server backend SI-JAGA.
+     2. Menyiarkan live streaming video MJPEG lokal.
 
-     1. WAJIB  - memotret saat jari menyentuh sensor, lalu mengirim
-                 fotonya ke server. Inilah buktinya.
-     2. BONUS  - menyiarkan gambar kamera secara langsung ke browser
-                 supaya petugas bisa melihat keadaan depan kotak.
+   Mekanisme Sinkronisasi:
+     Kabel trigger dari GPIO 25 Board A terhubung ke GPIO 13 Board B.
+     Saat jari menempel pada sensor, Board A memicu interupsi pada
+     Board B untuk langsung mengambil foto snapshot.
 
-   Ia tidak tahu apa-apa soal sidik jari, relay, atau alarm - dan
-   memang tidak perlu tahu.
-
-   CARA IA DIBERI TAHU
-   Satu kabel dari GPIO 25 Board A ke GPIO 13 Board B, ditambah
-   ground bersama. Board A menaikkan kabel itu selama 50 ms tepat
-   saat jari terdeteksi menempel, SEBELUM hasil pencocokan diketahui.
-   Board B menangkap tepi naiknya lewat interupsi, lalu memotret.
-
-   Karena pemicunya datang sebelum hasil pencocokan, percobaan yang
-   GAGAL pun ikut terpotret. Itu seluruh alasan sistem ini ada:
-   gembok lama tidak meninggalkan jejak siapa pun yang mencoba.
-
-   KALAU BOARD B MATI, pintu tetap aman. Yang hilang hanya fotonya,
-   dan Board A tetap mencatat percobaannya.
-
-   Papan: AI Thinker ESP32-CAM
-   Partisi: Huge APP (3MB No OTA/1MB SPIFFS)
-
-   Disusun dengan bantuan Claude (Anthropic).
+   Papan    : AI Thinker ESP32-CAM
+   Partisi  : Huge APP (3MB No OTA / 1MB SPIFFS)
    ================================================================== */
 
 #include "esp_camera.h"

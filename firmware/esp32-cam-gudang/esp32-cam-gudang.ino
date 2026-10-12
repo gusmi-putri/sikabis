@@ -31,22 +31,8 @@
  * CATATAN DAYA: streaming + Telegram + API menarik arus besar.
  * Gunakan sumber 5V terpisah yang kuat, jangan hanya dari FTDI.
  *
- * Ingat: jumper IO0 -> GND saat upload, dicabut saat dijalankan.
- *
- * ===========================================================
- * KENAPA FILE INI BERBEDA DARI VERSI AWAL:
- * Versi awal HANYA mengirim foto ke Telegram dan menyimpan stream
- * lokal â€” tidak pernah memberi tahu backend Laravel, sehingga:
- *   - Motion event tidak pernah muncul di dashboard web (tabel
- *     motion_events tetap kosong/basi).
- *   - Status perangkat (online/offline, last_seen) di dashboard
- *     tidak pernah ter-update, jadi terlihat seolah mati selamanya.
- *   - Tombol "Set ON / Set OFF" di web (PIRControlPanel)
- *     tidak berefek apa pun ke perangkat fisik.
- * Versi ini menambahkan tiga panggilan HTTP ke Laravel API
- * (heartbeat, command polling, upload motion-event) supaya
- * perangkat fisik dan dashboard web benar-benar tersinkron.
- * ===========================================================
+ * Catatan: Hubungkan jumper IO0 ke GND saat proses upload firmware,
+ * dan lepaskan saat perangkat dijalankan.
  */
 
 #include <WiFi.h>

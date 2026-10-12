@@ -1,8 +1,6 @@
 /**
  * SI-JAGA — LoginPage.tsx
- * Halaman login untuk operator jaga.
- * Disesuaikan untuk memvalidasi berdasarkan usersList mock
- * dan mengecek is_active.
+ * Halaman otentikasi login pengguna SI-JAGA.
  */
 
 import React, { useState } from 'react';

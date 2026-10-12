@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 class SiJagaSeeder extends Seeder
 {
     /**
-     * Seed data awal SI-JAGA, setara dengan src/data/mockData.ts di frontend.
+     * Seed data awal sistem SI-JAGA.
      */
     public function run(): void
     {

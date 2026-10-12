@@ -1,27 +1,22 @@
 /* ==================================================================
    FIRMWARE BOARD A  -  PENGAMANAN KOTAK KUNCI
-   Bengpuskomlekad  |  Richard  |  Universitas Pertahanan RI
+   Bengpuskomlekad  |  Universitas Pertahanan RI
 
-   Board A memegang: sensor sidik jari AS608, relay + solenoid,
-   buzzer, LED indikator, pemicu kamera, dan pengiriman log ke
-   server web rekan.
+   Board A mengelola: sensor sidik jari AS608, relay + solenoid,
+   buzzer, LED indikator, pemicu kamera, dan transmisi log ke
+   server SI-JAGA.
 
-   Board B (ESP32-CAM) berdiri sendiri: ia menunggu pulsa di satu
-   kabel dari Board A, memotret, lalu mengirim fotonya sendiri ke
-   server. Board A tidak pernah menyentuh data foto.
+   Board B (ESP32-CAM) menerima pulsa trigger dari Board A,
+   mengambil foto snapshot, dan mengunggahnya ke server.
 
-   ALUR SATU PERCOBAAN
-     1. Jari menyentuh sensor
-     2. DETIK ITU JUGA Board A memberi pulsa ke Board B  -> kamera
-        memotret sebelum hasil pencocokan diketahui, sehingga
-        percobaan yang gagal pun tetap terpotret
-     3. Pencocokan dikerjakan di dalam modul AS608
-     4. Cocok      -> relay LOW 5 detik, lalu terkunci lagi
-        Tidak cocok -> penghitung gagal bertambah
-     5. Gagal 3 kali berturut-turut -> alarm buzzer
-     6. Apa pun hasilnya, satu baris log diantrikan untuk dikirim
-
-   Disusun dengan bantuan Claude (Anthropic).
+   ALUR PERCOBAAN AKSES:
+     1. Jari menyentuh sensor sidik jari AS608
+     2. Board A mengirim pulsa pemicu ke Board B untuk memotret
+     3. Proses pencocokan sidik jari di modul AS608
+     4. Berhasil  -> Relay aktif (solenoid terbuka 5 detik)
+        Gagal     -> Penghitung kegagalan bertambah
+     5. Gagal 3 kali berturut-turut -> Alarm buzzer aktif
+     6. Seluruh log kejadian dikirim ke server backend
    ================================================================== */
 
 #include <WiFi.h>
@@ -31,14 +26,10 @@
 #include "config.h"
 
 /* ==================================================================
-   BAGIAN 1  -  KONFIGURASI YANG PERLU ANDA ISI
-   Hanya bagian ini yang berubah saat pindah jaringan atau server.
+   BAGIAN 1  -  KONFIGURASI SISTEM
    ================================================================== */
 
-
-// Alamat endpoint milik rekan Anda. Selama masih false, firmware
-// berjalan penuh tetapi log hanya dicetak ke Serial Monitor -
-// berguna untuk menguji semuanya sebelum servernya siap.
+// Endpoint pengiriman log akses ke server
 const bool  KIRIM_KE_SERVER = true;
 const char* SERVER_URL      = SERVER_BASE "/device/keybox/log";
 

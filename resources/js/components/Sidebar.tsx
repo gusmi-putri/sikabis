@@ -100,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userR
           &copy; 2026 SI-JAGA
         </div>
         <div className={`text-[9px] font-mono text-center ${isDark ? 'text-slate-600' : 'text-slate-500'}`}>
-          v2.0.0 — Glassmorphism Build
+          BENGPUSKOMLEK X UNHAN RI
         </div>
       </div>
     </aside>

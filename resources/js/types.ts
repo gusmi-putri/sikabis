@@ -21,7 +21,7 @@ export interface User {
   id: number;
   name: string;
   username: string;
-  password?: string; // Di frontend hanya sebagai mock, aslinya hashing di backend
+  password?: string;
   role: UserRole;
   is_active: boolean;
   created_at: string;
