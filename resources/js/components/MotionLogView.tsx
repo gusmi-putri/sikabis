@@ -17,9 +17,15 @@ interface MotionLogViewProps {
   events: MotionEvent[];
   deviceStatus: DeviceStatus;
   onToggleFlash: (on: boolean) => Promise<void>;
+  showLiveCamera?: boolean;
 }
 
-export const MotionLogView: React.FC<MotionLogViewProps> = ({ events, deviceStatus, onToggleFlash }) => {
+export const MotionLogView: React.FC<MotionLogViewProps> = ({
+  events,
+  deviceStatus,
+  onToggleFlash,
+  showLiveCamera = true,
+}) => {
   const [filterMode, setFilterMode] = useState<string>('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -53,13 +59,15 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({ events, deviceStat
   return (
     <div className="space-y-5">
       {/* 1. Komponen Panel Live Camera Opsional */}
-      <LiveCameraPanel 
-        deviceId={deviceStatus.device_id}
-        status={deviceStatus.status}
-        streamUrl={deviceStatus.stream_url}
-        flashOn={deviceStatus.flash_on}
-        onToggleFlash={onToggleFlash}
-      />
+      {showLiveCamera && (
+        <LiveCameraPanel 
+          deviceId={deviceStatus.device_id}
+          status={deviceStatus.status}
+          streamUrl={deviceStatus.stream_url}
+          flashOn={deviceStatus.flash_on}
+          onToggleFlash={onToggleFlash}
+        />
+      )}
 
       {/* 2. Header & Filter Log */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl border shadow-lg bg-white/5 backdrop-blur-md border-white/10">

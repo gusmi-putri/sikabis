@@ -12,7 +12,7 @@ import { User } from '../types';
 interface UserManagementViewProps {
   currentUser: User;
   usersList: User[];
-  onAddPiket: (data: { name: string; username: string; password: string }) => Promise<void>;
+  onAddPiket: (data: { name: string; username: string; password: string; role?: UserRole }) => Promise<void>;
   onToggleActive: (userId: number) => Promise<void>;
   onUpdateUser: (userId: number, data: Partial<User>) => Promise<void>;
   onDeleteUser: (userId: number) => Promise<void>;
@@ -28,18 +28,24 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 }) => {
   const { isDark } = useTheme();
 
-  // State untuk form tambah piket
+  // State untuk form tambah user
   const [formData, setFormData] = useState({
     name: '',
     username: '',
     password: '',
+    role: 'piket' as UserRole,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
 
   // State untuk modal Edit & Delete
   const [userToEdit, setUserToEdit] = useState<User | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', username: '', password: '' });
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    username: '',
+    password: '',
+    role: 'piket' as UserRole,
+  });
   const [editActionError, setEditActionError] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [deleteActionError, setDeleteActionError] = useState('');
@@ -57,7 +63,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     try {
       // Validasi & hashing password dilakukan di backend Laravel.
       await onAddPiket(formData);
-      setFormData({ name: '', username: '', password: '' });
+      setFormData({ name: '', username: '', password: '', role: 'piket' });
     } catch (err: any) {
       setFormError(
         err?.response?.data?.errors?.username?.[0] ||
@@ -80,6 +86,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       name: u.name,
       username: u.username,
       password: '', // Kosongkan password agar tidak diubah jika tidak diisi
+      role: u.role,
     });
   };
 
@@ -157,7 +164,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 <UserPlus className="w-4 h-4" />
               </div>
               <h3 className="text-sm font-bold text-white">
-                Tambah Akun Piket
+                Tambah Akun Pengguna
               </h3>
             </div>
           </div>
@@ -206,10 +213,24 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 text-slate-400">
+                  Peran / Role <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
+                  className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 bg-black/40 border-white/10 text-slate-200"
+                >
+                  <option value="piket" className="bg-slate-900 text-white">Piket Jaga (Operator Pos)</option>
+                  <option value="pimpinan" className="bg-slate-900 text-white">Pimpinan (Monitoring Eksekutif / View-Only)</option>
+                </select>
+              </div>
+
               <div className="mt-2 p-3 rounded-lg border flex gap-3 bg-white/5 border-white/10">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
                 <div className="text-[10px] font-mono leading-relaxed text-slate-400">
-                  Akun yang dibuat di sini hanya berlaku untuk role <strong>Piket Jaga</strong>. Akun piket tidak memiliki akses ke halaman manajemen ini.
+                  Role <strong>Piket Jaga</strong> untuk operasional harian. Role <strong>Pimpinan</strong> untuk pemantauan jarak jauh tanpa kontrol teknis dan tanpa live stream.
                 </div>
               </div>
 
@@ -266,7 +287,13 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400">(Anda)</span>
                           )}
                           {u.role === 'admin_pam' && u.id !== currentUser.id && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-400">(Admin)</span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-400">(Admin PAM)</span>
+                          )}
+                          {u.role === 'pimpinan' && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">(Pimpinan)</span>
+                          )}
+                          {u.role === 'piket' && u.id !== currentUser.id && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-500/20 text-slate-400">(Piket Jaga)</span>
                           )}
                         </div>
                         <div className="text-[10px] font-mono mt-0.5 text-slate-400">
@@ -390,6 +417,22 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                   } focus:outline-none focus:ring-1 focus:ring-blue-500`}
                 />
               </div>
+
+              {userToEdit?.role !== 'admin_pam' && (
+                <div>
+                  <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Peran / Role</label>
+                  <select
+                    value={editFormData.role}
+                    onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value as UserRole })}
+                    className={`w-full px-3 py-2 rounded border text-sm ${
+                      isDark ? 'bg-slate-950 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
+                    } focus:outline-none focus:ring-1 focus:ring-blue-500`}
+                  >
+                    <option value="piket">Piket Jaga (Operator Pos)</option>
+                    <option value="pimpinan">Pimpinan (Monitoring Eksekutif / View-Only)</option>
+                  </select>
+                </div>
+              )}
 
               <div className="flex gap-3 justify-end pt-4">
                 <button

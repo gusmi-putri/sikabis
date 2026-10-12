@@ -21,7 +21,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255', 'unique:users,username'],
             'password' => ['required', 'string', 'min:4'],
-            'role' => ['required', 'in:piket,admin_pam'],
+            'role' => ['required', 'in:piket,admin_pam,pimpinan'],
         ]);
 
         $user = User::create([
@@ -48,6 +48,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
             'password' => ['nullable', 'string', 'min:4'],
+            'role' => ['nullable', 'in:piket,admin_pam,pimpinan'],
         ]);
 
         if (! empty($data['password'])) {
@@ -71,13 +72,12 @@ class UserController extends Controller
     }
 
     /**
-     * Halaman ini hanya untuk mengelola akun piket -- admin tidak boleh
-     * menghapus atau menonaktifkan akun admin lewat endpoint ini.
+     * Admin tidak boleh menghapus atau menonaktifkan akun admin_pam lain.
      */
     private function ensurePiket(User $user): void
     {
-        if ($user->role !== 'piket') {
-            abort(403, 'Hanya akun piket yang bisa dihapus atau dinonaktifkan.');
+        if ($user->role === 'admin_pam') {
+            abort(403, 'Akun Admin PAM tidak bisa dihapus atau dinonaktifkan.');
         }
     }
 }

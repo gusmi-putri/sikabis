@@ -60,10 +60,15 @@ export const Topbar: React.FC<TopbarProps> = ({
     ? 0
     : Math.min(9999, Math.floor((Date.now() - new Date(deviceStatus.last_seen).getTime()) / 60000));
 
-  const roleLabel = operatorRole === 'admin_pam' ? 'Admin PAM' : 'Piket Jaga';
-  const roleColorClass = operatorRole === 'admin_pam'
-    ? isDark ? 'text-amber-400' : 'text-amber-600'
-    : isDark ? 'text-slate-400' : 'text-slate-500';
+  const roleLabel =
+    operatorRole === 'admin_pam' ? 'Admin PAM' :
+    operatorRole === 'pimpinan' ? 'Pimpinan' : 'Piket Jaga';
+  const roleColorClass =
+    operatorRole === 'admin_pam'
+      ? isDark ? 'text-amber-400' : 'text-amber-600'
+      : operatorRole === 'pimpinan'
+      ? isDark ? 'text-sky-400' : 'text-sky-600'
+      : isDark ? 'text-slate-400' : 'text-slate-500';
 
   const refreshLabel =
     sinceRefresh < 5  ? 'Baru saja' :

@@ -38,27 +38,24 @@
 #include "esp_http_server.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+#include "config.h"
 
 /* ==================================================================
    BAGIAN 1  -  KONFIGURASI YANG PERLU ANDA ISI
    ================================================================== */
 
-const char* WIFI_SSID  = "RENDAL";
-const char* WIFI_SANDI = "Komlekad42";
 
 // Selama false, kamera tetap memotret dan melaporkan ukuran fotonya
 // di Serial Monitor, tapi tidak mengirim ke mana pun. Berguna untuk
 // menguji rantai pemicu sebelum server rekan Anda siap.
 const bool  KIRIM_KE_SERVER = true;
-const char* SERVER_URL_FOTO = "http://192.168.1.3/sikabis/public/api/device/keybox/foto";
-const char* SERVER_TOKEN    = "4czIe0msRd2AVv4SKoV3eWvY792uCTcF5kkp69Z6";
-const char* ID_PERANGKAT    = "kotak-kunci-cam-01";
+const char* SERVER_URL_FOTO = SERVER_BASE "/device/keybox/foto";
 
 // Board B tidak punya alasan lain untuk menghubungi server selain saat
 // memotret -- kalau lama tidak ada gerakan, dashboard salah kira board
 // ini mati padahal cuma menunggu. Heartbeat kosong ini yang menjaga
 // status "online" tetap benar walau tidak ada pemicu sama sekali.
-const char* SERVER_URL_HEARTBEAT = "http://192.168.1.3/sikabis/public/api/device/heartbeat";
+const char* SERVER_URL_HEARTBEAT = SERVER_BASE "/device/heartbeat";
 const unsigned long JEDA_HEARTBEAT = 20000;
 
 /* Siaran langsung. Dimatikan dengan mengubah baris ini ke false -

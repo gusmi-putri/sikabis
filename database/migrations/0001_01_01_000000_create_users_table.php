@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('username')->unique();
             $table->string('password');
-            $table->enum('role', ['piket', 'admin_pam'])->default('piket');
+            $table->enum('role', ['piket', 'admin_pam', 'pimpinan'])->default('piket');
             $table->boolean('is_active')->default(true);
             $table->rememberToken();
             $table->timestamps();

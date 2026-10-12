@@ -28,36 +28,32 @@
 #include <HTTPClient.h>
 #include <Adafruit_Fingerprint.h>
 #include <Preferences.h>
+#include "config.h"
 
 /* ==================================================================
    BAGIAN 1  -  KONFIGURASI YANG PERLU ANDA ISI
    Hanya bagian ini yang berubah saat pindah jaringan atau server.
    ================================================================== */
 
-const char* WIFI_SSID  = "RENDAL";
-const char* WIFI_SANDI = "Komlekad42";
 
 // Alamat endpoint milik rekan Anda. Selama masih false, firmware
 // berjalan penuh tetapi log hanya dicetak ke Serial Monitor -
 // berguna untuk menguji semuanya sebelum servernya siap.
 const bool  KIRIM_KE_SERVER = true;
-const char* SERVER_URL      = "http://192.168.1.3/sikabis/public/api/device/keybox/log";
-const char* SERVER_TOKEN    = "aef9dr93yJOg2d5tStM0bwAMeuKgi8NziRptDIoI";
-const char* ID_PERANGKAT    = "kotak-kunci-01";
+const char* SERVER_URL      = SERVER_BASE "/device/keybox/log";
 
 // Perintah dari dashboard web (mute alarm / paksa kunci). SENGAJA tidak
 // ada perintah untuk membuka solenoid dari jarak jauh -- itu keputusan
 // keamanan yang disengaja, bukan keterbatasan teknis. Lihat juga
 // KeyBoxController::command() di backend.
-const char* SERVER_URL_PERINTAH = "http://192.168.1.3/sikabis/public/api/device/keybox/command";
+const char* SERVER_URL_PERINTAH = SERVER_BASE "/device/keybox/command";
 const unsigned long JEDA_POLL_PERINTAH = 1000;
 
 // Dipakai enroll/delete untuk melapor tiap tahap ("Tempelkan jari",
 // "Angkat jari...", dst) supaya operator bisa mengikuti dari dashboard
 // web, tidak perlu buka Serial Monitor untuk tahu kapan harus menyentuh
 // sensor.
-const char* SERVER_URL_ENROLL_STATUS = "http://192.168.1.3/sikabis/public/api/device/keybox/enroll-status";
-const char* SERVER_URL_TEMPLATE      = "http://192.168.1.3/sikabis/public/api/device/keybox/templates";
+const char* SERVER_URL_ENROLL_STATUS = SERVER_BASE "/device/keybox/enroll-status";
 
 /* ==================================================================
    BAGIAN 2  -  PIN
@@ -516,8 +512,6 @@ void cekPerintahServer() {
   } else if (isi.indexOf("RESET_SENSOR") >= 0) {
     Serial.println(F("  Deteksi ulang sensor sidik jari lewat perintah web."));
     mulaiSensor();
-  } else if (isi.indexOf("SCAN") >= 0) {
-    pindaiTemplate();
   } else if (isi.indexOf("ENROLL") >= 0) {
     int posisi = isi.indexOf("\"target\":");
     int target = posisi >= 0 ? isi.substring(posisi + 9).toInt() : 0;
@@ -765,41 +759,6 @@ void daftarSidikJariID(int id) {
     laporEnroll("Gagal - modul sensor menolak menyimpan (mungkin penuh)");
   }
   garis();
-}
-
-/* Memeriksa 127 slot sensor dan melaporkan ID yang terisi ke server */
-void pindaiTemplate() {
-  if (!sensorSiap) return;
-  Serial.println(F("  Memindai slot sensor sidik jari ..."));
-
-  String ids = "";
-  int jumlah = 0;
-  for (int id = 1; id <= 127; id++) {
-    if (sensor.loadModel(id) == FINGERPRINT_OK) {
-      if (jumlah > 0) ids += ",";
-      ids += String(id);
-      jumlah++;
-    }
-  }
-  Serial.print(F("  Pindai selesai, terisi: "));
-  Serial.println(jumlah);
-
-  if (!KIRIM_KE_SERVER || WiFi.status() != WL_CONNECTED) return;
-
-  HTTPClient http;
-  http.setTimeout(TIMEOUT_HTTP);
-  http.begin(SERVER_URL_TEMPLATE);
-  http.addHeader("Content-Type", "application/json");
-  if (strlen(SERVER_TOKEN) > 0) {
-    http.addHeader("Authorization", String("Bearer ") + SERVER_TOKEN);
-  }
-  String body = "{\"perangkat\":\"" + String(ID_PERANGKAT) + "\",\"ids\":[" + ids + "]}";
-  int kode = http.POST(body);
-  if (kode != 204) {
-    Serial.print(F("  Lapor hasil pindai gagal, kode "));
-    Serial.println(kode);
-  }
-  http.end();
 }
 
 /* Menghapus template sidik jari dari memori sensor AS608 */

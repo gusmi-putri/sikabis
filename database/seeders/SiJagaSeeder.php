@@ -45,6 +45,14 @@ class SiJagaSeeder extends Seeder
             'is_active' => false,
         ]);
 
+        User::create([
+            'name' => 'Kolonel Pimpinan / Danpus',
+            'username' => 'komandan',
+            'password' => Hash::make('123'),
+            'role' => 'pimpinan',
+            'is_active' => true,
+        ]);
+
         // ---- Personnel ----
         $personnel = [
             ['name' => 'Letkol Inf Hendra Gunawan', 'rank_nrp' => 'Letkol Inf / 11020011220675', 'fingerprint_id' => 1, 'status' => 'active', 'notes' => null, 'minutes' => 14400],

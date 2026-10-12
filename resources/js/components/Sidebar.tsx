@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userR
 
   // Filter menu berdasarkan role
   const menuItems = allMenuItems.filter(item => {
-    if (userRole === 'piket' && item.adminOnly) return false;
+    if (userRole !== 'admin_pam' && item.adminOnly) return false;
     return true;
   });
 

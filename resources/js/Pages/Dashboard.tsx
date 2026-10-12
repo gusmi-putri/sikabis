@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ShieldCheck } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { APIService } from '../services/api';
@@ -26,6 +27,7 @@ import { UserManagementView } from '../components/UserManagementView';
 import { PirModeLogPanel } from '../components/PirModeLogPanel';
 import { LiveCameraPanel } from '../components/LiveCameraPanel';
 import { DeviceStatusPanel, KeyboxCommand } from '../components/DeviceStatusPanel';
+import { ExecutiveHardwareSummary } from '../components/ExecutiveHardwareSummary';
 
 // Tipe & Data
 import {
@@ -37,6 +39,7 @@ import {
   PIRMode,
   DashboardStats,
   User,
+  UserRole,
   PirModeLog,
   PersonnelInput,
 } from '../types';
@@ -53,8 +56,6 @@ const EMPTY_DEVICE_STATUS: DeviceStatus = {
 };
 
 // Durasi idle sebelum session otomatis berakhir (milidetik)
-const IDLE_TIMEOUT_MS   = 15 * 60 * 1000;   // 15 menit
-const IDLE_WARNING_MS   = 14 * 60 * 1000;   // peringatan di menit ke-14
 
 export default function Dashboard() {
   const { isDark } = useTheme();
@@ -84,11 +85,6 @@ export default function Dashboard() {
       setActiveTab(tab);
     }
   }, [hasUnsavedForm, activeTab]);
-
-  // ── Idle session timeout ────────────────────────────────────
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleWarning, setShowIdleWarning] = useState(false);
-  const [idleCountdown, setIdleCountdown] = useState(60);
 
   // ── Data State ─────────────────────────────────────────────
   // Ref ini mencegah polling overwrite device status saat perintah PIR/flash
@@ -155,40 +151,6 @@ export default function Dashboard() {
     const interval = setInterval(() => refreshData(currentUser, true), 2000);
     return () => clearInterval(interval);
   }, [currentUser, refreshData]);
-
-  // ── Idle session timeout ────────────────────────────────────
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const resetIdle = () => { lastActivityRef.current = Date.now(); };
-    window.addEventListener('mousemove', resetIdle, { passive: true });
-    window.addEventListener('keydown',   resetIdle, { passive: true });
-    window.addEventListener('click',     resetIdle, { passive: true });
-    window.addEventListener('touchstart',resetIdle, { passive: true });
-
-    const check = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        toast('Sesi berakhir karena tidak aktif.', 'warning');
-        handleLogout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        const remaining = Math.ceil((IDLE_TIMEOUT_MS - idle) / 1000);
-        setIdleCountdown(remaining);
-        setShowIdleWarning(true);
-      } else {
-        setShowIdleWarning(false);
-      }
-    }, 5000);
-
-    return () => {
-      clearInterval(check);
-      window.removeEventListener('mousemove', resetIdle);
-      window.removeEventListener('keydown',   resetIdle);
-      window.removeEventListener('click',     resetIdle);
-      window.removeEventListener('touchstart',resetIdle);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
 
   // ── Statistik (dihitung dari log 24 jam terakhir) ──────────
   const now = Date.now();
@@ -345,12 +307,12 @@ export default function Dashboard() {
     toast('Data personel berhasil diperbarui.', 'success');
   };
 
-  // ── Aksi: Tambah akun piket baru (Admin PAM) ───────────────
-  const handleAddPiketUser = async (data: { name: string; username: string; password: string }) => {
-    await APIService.createPiketUser({ ...data, role: 'piket' });
+  // ── Aksi: Tambah akun baru (Admin PAM) ───────────────
+  const handleAddPiketUser = async (data: { name: string; username: string; password: string; role?: UserRole }) => {
+    await APIService.createPiketUser({ ...data, role: data.role || 'piket' });
     const updated = await APIService.getUsersList();
     setUsersList(updated);
-    toast('Akun piket berhasil dibuat.', 'success');
+    toast(`Akun ${data.role === 'pimpinan' ? 'pimpinan' : 'piket'} berhasil dibuat.`, 'success');
   };
 
   // ── Aksi: Toggle status aktif akun piket ───────────────────
@@ -455,30 +417,39 @@ export default function Dashboard() {
                 }}
               />
               <StatCards stats={stats} />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-                <PIRControlPanel
+              {currentUser.role === 'pimpinan' ? (
+                <ExecutiveHardwareSummary
                   deviceStatus={deviceStatus}
-                  onSetMode={handleSetPIRMode}
+                  keyboxStatus={keyboxStatus}
                 />
-                <DeviceStatusPanel
-                  title="Status Kotak Kunci"
-                  description="Sidik jari (Board A) + kameranya (Board B)"
-                  devices={keyboxStatus}
-                  onKeyboxCommand={handleKeyboxCommand}
-                />
-              </div>
-              <LiveCameraPanel
-                deviceId={deviceStatus.device_id}
-                status={deviceStatus.status}
-                streamUrl={deviceStatus.stream_url}
-                flashOn={deviceStatus.flash_on}
-                onToggleFlash={handleToggleFlash}
-              />
-              <LiveCameraPanel
-                deviceId={keyboxCam?.device_id ?? 'kotak-kunci-cam-01'}
-                status={keyboxCam?.status ?? 'offline'}
-                streamUrl={keyboxCam?.stream_url ?? null}
-              />
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                    <PIRControlPanel
+                      deviceStatus={deviceStatus}
+                      onSetMode={handleSetPIRMode}
+                    />
+                    <DeviceStatusPanel
+                      title="Status Kotak Kunci"
+                      description="Sidik jari (Board A) + kameranya (Board B)"
+                      devices={keyboxStatus}
+                      onKeyboxCommand={handleKeyboxCommand}
+                    />
+                  </div>
+                  <LiveCameraPanel
+                    deviceId={deviceStatus.device_id}
+                    status={deviceStatus.status}
+                    streamUrl={deviceStatus.stream_url}
+                    flashOn={deviceStatus.flash_on}
+                    onToggleFlash={handleToggleFlash}
+                  />
+                  <LiveCameraPanel
+                    deviceId={keyboxCam?.device_id ?? 'kotak-kunci-cam-01'}
+                    status={keyboxCam?.status ?? 'offline'}
+                    streamUrl={keyboxCam?.stream_url ?? null}
+                  />
+                </>
+              )}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <LiveAccessTable
                   logs={accessLogs.slice(0, 5)}
@@ -508,7 +479,8 @@ export default function Dashboard() {
             <MotionLogView 
               events={motionEvents} 
               deviceStatus={deviceStatus}
-              onToggleFlash={handleToggleFlash}
+              onToggleFlash={currentUser.role === 'pimpinan' ? async () => {} : handleToggleFlash}
+              showLiveCamera={currentUser.role !== 'pimpinan'}
             />
           )}
 
@@ -521,7 +493,6 @@ export default function Dashboard() {
               onDeactivate={handleDeactivatePersonnel}
               onUpdate={handleUpdatePersonnel}
               onDirtyChange={setHasUnsavedForm}
-              isAdminPam={currentUser.role === 'admin_pam'}
             />
           )}
           
@@ -539,36 +510,6 @@ export default function Dashboard() {
         </main>
       </div>
       </div>
-      {/* Modal: Peringatan idle akan logout */}
-      {showIdleWarning && (
-        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`rounded-xl border max-w-sm w-full p-5 shadow-2xl ${
-            isDark ? 'bg-slate-900 border-amber-500/40' : 'bg-white border-amber-300'
-          }`}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className={`p-2 rounded-full ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
-                <span className="text-lg">⏱</span>
-              </div>
-              <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                Sesi akan berakhir
-              </h3>
-            </div>
-            <p className={`text-sm leading-relaxed mb-5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              Tidak ada aktivitas terdeteksi. Anda akan otomatis keluar dalam{' '}
-              <span className="font-bold text-amber-400">{idleCountdown} detik</span>.
-            </p>
-            <button
-              onClick={() => {
-                lastActivityRef.current = Date.now();
-                setShowIdleWarning(false);
-              }}
-              className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-white text-sm font-semibold transition-colors cursor-pointer"
-            >
-              Saya masih di sini
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Konfirmasi navigasi dengan form belum tersimpan */}
       {pendingTab !== null && (

@@ -14,7 +14,7 @@ export type PersonnelStatus = 'active' | 'inactive';
 
 export type DeviceOnlineStatus = 'online' | 'offline';
 
-export type UserRole = 'piket' | 'admin_pam';
+export type UserRole = 'piket' | 'admin_pam' | 'pimpinan';
 
 // ---- Model: users (Akun Sistem) ----
 export interface User {
