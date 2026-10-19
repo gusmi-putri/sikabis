@@ -5,11 +5,15 @@
  * tetap akurat walau IP berubah karena DHCP.
  */
 
-import React, { useState, useRef } from 'react';
-import { Camera, Settings2, RefreshCw, WifiOff, Zap, ZapOff } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Camera, Settings2, RefreshCw, WifiOff, Zap, ZapOff, Loader2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceOnlineStatus } from '../types';
 import { deviceLabel } from '../utils/deviceLabel';
+
+// Kamera ESP32 hanya melayani satu penonton sekali waktu; kalau masih
+// menyelesaikan koneksi lama, permintaan baru menunggu tanpa error.
+const STALL_AFTER_MS = 8000;
 
 interface LiveCameraPanelProps {
   deviceId: string;
@@ -32,6 +36,8 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
   const { isDark } = useTheme();
   const [isStreamActive, setIsStreamActive] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [frameLoaded, setFrameLoaded] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [manualUrl, setManualUrl] = useState<string | null>(null);
   const [isEditingUrl, setIsEditingUrl] = useState(false);
@@ -53,6 +59,21 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
 
   const effectiveUrl = manualUrl ?? streamUrl;
   const displayUrl = effectiveUrl ? `${effectiveUrl}${effectiveUrl.includes('?') ? '&' : '?'}t=${reloadToken}` : null;
+
+  const restartStream = () => {
+    setImageFailed(false);
+    setFrameLoaded(false);
+    setStalled(false);
+    setReloadToken(Date.now());
+  };
+
+  // Bingkai pertama belum datang setelah beberapa detik: beri tahu operator
+  // alih-alih membiarkan kotak abu-abu tanpa keterangan.
+  useEffect(() => {
+    if (!isStreamActive || !displayUrl || imageFailed || frameLoaded) return;
+    const timer = setTimeout(() => setStalled(true), STALL_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [isStreamActive, displayUrl, imageFailed, frameLoaded]);
 
   return (
     <div className={`rounded-2xl border shadow-lg overflow-hidden backdrop-blur-md ${isDark ? 'bg-white/5 border-white/10' : 'bg-white/60 border-slate-200'}`}>
@@ -77,15 +98,47 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
           <div className="relative aspect-video rounded-xl overflow-hidden border-2 bg-black/50 flex items-center justify-center border-white/10">
             {isStreamActive ? (
               displayUrl && !imageFailed ? (
-                <img
-                  ref={imgRef}
-                  key={displayUrl}
-                  src={displayUrl}
-                  alt="Live Stream"
-                  className="w-full h-full object-contain"
-                  onError={() => setImageFailed(true)}
-                  onLoad={() => setImageFailed(false)}
-                />
+                <>
+                  <img
+                    ref={imgRef}
+                    key={displayUrl}
+                    src={displayUrl}
+                    alt="Live Stream"
+                    className="w-full h-full object-contain"
+                    onError={() => setImageFailed(true)}
+                    onLoad={() => {
+                      setImageFailed(false);
+                      setFrameLoaded(true);
+                      setStalled(false);
+                    }}
+                  />
+                  {!frameLoaded && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center font-mono text-sm text-slate-300 bg-black/60">
+                      {stalled ? (
+                        <>
+                          <WifiOff className="w-6 h-6 text-amber-400" />
+                          <span className="text-amber-300">Kamera belum merespons.</span>
+                          <span className="text-[11px] text-slate-400 max-w-md">
+                            Biasanya kamera masih melayani koneksi sebelumnya (hanya bisa satu penonton).
+                            Tunggu beberapa detik lalu coba lagi; kalau tetap gagal, restart perangkat.
+                          </span>
+                          <button
+                            onClick={restartStream}
+                            className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] bg-white/10 hover:bg-white/20 border-white/20 text-slate-100"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Coba lagi
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          <span>Menghubungkan ke kamera...</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-center text-slate-500 font-mono text-sm px-4">
                   <WifiOff className="w-6 h-6 mx-auto mb-2" />
@@ -112,10 +165,7 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
             <h4 className={`text-xs font-semibold mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Video Feed</h4>
             <button
               onClick={() => {
-                if (!isStreamActive) {
-                  setImageFailed(false);
-                  setReloadToken(Date.now());
-                }
+                if (!isStreamActive) restartStream();
                 setIsStreamActive(!isStreamActive);
               }}
               className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-semibold transition-all ${
@@ -197,10 +247,7 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
             )}
 
             <button
-              onClick={() => {
-                setImageFailed(false);
-                setReloadToken(Date.now());
-              }}
+              onClick={restartStream}
               className={`w-full flex items-center justify-center gap-1.5 mt-2 py-1.5 rounded-lg border text-[11px] transition-colors ${
                 isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300' : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600'
               }`}
