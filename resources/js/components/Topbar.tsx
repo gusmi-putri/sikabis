@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Sun, Moon, LogOut, User, AlertTriangle, RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import { Clock, Sun, Moon, LogOut, User, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { UserRole } from '../types';
@@ -13,8 +13,6 @@ interface TopbarProps {
   operatorName: string;
   operatorRole: UserRole;
   lastRefreshed: Date | null;
-  soundEnabled: boolean;
-  onToggleSound: () => void;
   onLogout: () => void;
 }
 
@@ -22,8 +20,6 @@ export const Topbar: React.FC<TopbarProps> = ({
   operatorName,
   operatorRole,
   lastRefreshed,
-  soundEnabled,
-  onToggleSound,
   onLogout,
 }) => {
   const { isDark, toggleTheme } = useTheme();
@@ -108,24 +104,6 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Kanan: Status device + Operator + Actions */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-
-          {/* Bunyi peringatan */}
-          <button
-            id="btn-toggle-sound"
-            onClick={onToggleSound}
-            title={soundEnabled ? 'Bunyi peringatan menyala (klik untuk mematikan)' : 'Bunyi peringatan mati (klik untuk menyalakan)'}
-            className={`p-1.5 rounded-md border transition-all cursor-pointer ${
-              soundEnabled
-                ? isDark
-                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
-                  : 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-700'
-                : isDark
-                ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-400'
-                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-500'
-            }`}
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
 
           {/* Theme Toggle */}
           <button

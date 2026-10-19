@@ -8,7 +8,6 @@ import { ShieldCheck } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { APIService, SyncState } from '../services/api';
-import { useAlertSound } from '../hooks/useAlertSound';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { ActivityLogView } from '../components/ActivityLogView';
 import { resolveDisplayName } from '../components/AccessLogDetail';
@@ -219,7 +218,6 @@ export default function Dashboard() {
   // ID terbesar yang sudah dilihat; kejadian dengan ID lebih besar dianggap
   // baru. Pemuatan pertama hanya mencatat, tidak memberi peringatan.
   const seenEventsRef = useRef<{ access: number; motion: number } | null>(null);
-  const { enabled: soundEnabled, toggle: toggleSound, play: playSound } = useAlertSound();
 
   useEffect(() => {
     if (!lastRefreshed) return;
@@ -237,10 +235,8 @@ export default function Dashboard() {
       const name = resolveDisplayName(log, personnelList);
       if (log.alarm) {
         toast(`ALARM: percobaan akses gagal berulang (${name}).`, 'error');
-        playSound('alarm');
       } else if (log.result === 'failed') {
         toast(`Percobaan akses gagal: ${name}.`, 'warning');
-        playSound('warning');
       } else {
         toast(`Akses berhasil: ${name}.`, 'info');
       }
@@ -248,12 +244,11 @@ export default function Dashboard() {
     for (const event of newMotion) {
       if (event.pir_mode === 'ON') {
         toast('Gerakan terdeteksi di gudang.', 'warning');
-        playSound('warning');
       } else {
         toast('Gerakan terekam saat sensor mati.', 'info');
       }
     }
-  }, [accessLogs, motionEvents, lastRefreshed, personnelList, toast, playSound]);
+  }, [accessLogs, motionEvents, lastRefreshed, personnelList, toast]);
 
   // ── Statistik (dihitung dari log 24 jam terakhir) ──────────
   const now = Date.now();
@@ -498,8 +493,6 @@ export default function Dashboard() {
           operatorName={currentUser.name}
           operatorRole={currentUser.role}
           lastRefreshed={lastRefreshed}
-          soundEnabled={soundEnabled}
-          onToggleSound={toggleSound}
           onLogout={handleLogout}
         />
 

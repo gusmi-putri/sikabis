@@ -124,3 +124,17 @@ Untuk pemakaian jangka panjang, sebaiknya set **IP address reservation/static** 
 | ESP32 tidak bisa hubungi server | Server tidak dijalankan dengan `--host=0.0.0.0`, atau `API_BASE_URL` di `config.h` masih pakai `localhost`/IP lama. |
 | Perubahan status (PIR/flash) dari web tidak sampai ke device | Tunggu maks. 10 detik (interval polling firmware), atau cek `serverTerhubung` lewat command `/status` di Telegram. |
 | Halaman blank / asset 404 setelah `git pull` | Jalankan `npm run build` ulang — build lama di `public/build` tidak otomatis update. |
+
+## Cache Konfigurasi (Laragon / Windows)
+
+Apache Laragon memakai `mod_php` thread-safe. Di Windows, pembacaan `.env` oleh beberapa thread sekaligus kadang gagal, sehingga sebagian request melihat konfigurasi kosong dan jatuh ke bawaan Laravel (`production` + `sqlite`) lalu dibalas `500 Server Error`. Gejalanya: error "Database file at path ... database.sqlite does not exist" muncul sesekali di `storage/logs/laravel.log`, padahal `.env` benar.
+
+Perbaikannya adalah men-cache konfigurasi supaya `.env` tidak dibaca lagi saat runtime:
+
+```bash
+php artisan config:cache
+```
+
+**Setiap kali `.env` diubah (APP_URL, DB_*, dll), jalankan lagi `php artisan config:cache`** — kalau tidak, perubahan tidak berlaku. Untuk membatalkan: `php artisan config:clear`.
+
+Tes otomatis aman dijalankan walau cache aktif: `phpunit.xml` mengarahkan tes ke file cache terpisah (`APP_CONFIG_CACHE`), dan `tests/TestCase.php` menghentikan tes sebelum menyentuh database kalau koneksi aktifnya bukan SQLite memori.
