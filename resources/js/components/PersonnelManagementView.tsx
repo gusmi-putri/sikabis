@@ -12,6 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Personnel, PersonnelInput, PersonnelStatus, DeviceStatus } from '../types';
 import { PersonnelRegistrationCard } from './PersonnelRegistrationCard';
 import { apiErrorMessage } from '../services/api';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface PersonnelManagementViewProps {
   personnelList: Personnel[];
@@ -36,6 +37,8 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
   const [editFormData, setEditFormData] = useState({ name: '', rank_nrp: '', fingerprint_id: '', notes: '' });
   const [editError, setEditError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  useEscapeKey(personToRevoke !== null && !isProcessing, () => setPersonToRevoke(null));
+  useEscapeKey(personToEdit !== null && !isProcessing, () => setPersonToEdit(null));
 
   const handleRevokeConfirm = async () => {
     if (!personToRevoke) return;
@@ -214,7 +217,7 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
               ID sidik jarinya dilepas dan riwayat aksesnya tetap tersimpan.
             </p>
             <div className={`p-3 rounded border text-xs font-mono mb-5 leading-relaxed ${isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              <span className="font-bold">Info:</span> Template ID <span className="font-bold">#{personToRevoke.fingerprint_id}</span> akan otomatis dihapus dari sensor Board A.
+              <span className="font-bold">Info:</span> Template ID <span className="font-bold">#{personToRevoke.fingerprint_id}</span> akan otomatis dihapus dari sensor sidik jari.
               Kotak kunci akan menerima perintah hapus dalam maksimal 5 detik.
             </div>
 
@@ -291,7 +294,7 @@ export const PersonnelManagementView: React.FC<PersonnelManagementViewProps> = (
                 <label className={`block text-xs font-semibold mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                   ID Sidik Jari{' '}
                   <span className="text-slate-500 font-normal">
-                    {personToEdit.status === 'active' ? '(sama dengan di Board A)' : '(isi untuk mengaktifkan lagi)'}
+                    {personToEdit.status === 'active' ? '(sama dengan di sensor sidik jari)' : '(isi untuk mengaktifkan lagi)'}
                   </span>
                 </label>
                 <input

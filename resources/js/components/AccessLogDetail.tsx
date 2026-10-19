@@ -8,6 +8,7 @@
 import React from 'react';
 import { AlertTriangle, BellRing, RotateCcw } from 'lucide-react';
 import { AccessLog, AccessReason, Personnel } from '../types';
+import { deviceLabel } from '../utils/deviceLabel';
 
 const REASON_LABELS: Record<AccessReason, string> = {
   cocok: 'Sidik jari cocok',
@@ -68,7 +69,7 @@ export const MissingLogsRow: React.FC<{ log: AccessLog; colSpan: number; isDark:
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {log.device_restarted && (
             <span className="inline-flex items-center gap-1">
-              <RotateCcw className="w-3 h-3" /> Perangkat {log.device_id} menyala ulang sebelum kejadian ini
+              <RotateCcw className="w-3 h-3" /> Perangkat {deviceLabel(log.device_id)} menyala ulang sebelum kejadian ini
             </span>
           )}
           {missing > 0 && (

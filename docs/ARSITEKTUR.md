@@ -86,6 +86,17 @@ ESP32 heartbeat rutin tiap 30 detik ──POST /api/device/heartbeat──►  D
 | `motion_events` | Riwayat deteksi PIR + foto dari ESP32-CAM |
 | `device_statuses` | Status live tiap perangkat (online/offline, status PIR, flash, stream URL, API key) |
 | `pir_mode_logs` | Riwayat perubahan nyala/mati sensor PIR, dengan sumber (`web`/`telegram`) dan siapa yang mengubah |
+| `activity_logs` | Jejak tindakan operator (login, kelola personel/akun, kontrol perangkat) dengan pelaku dan IP, khusus dibaca Admin PAM |
+
+## Polling Dashboard yang Hemat
+
+Dashboard tidak lagi memanggil 8 endpoint tiap 2 detik. Tiap siklus hanya tiga permintaan ringan: status perangkat, status kotak kunci, dan `GET /sync-state` (sidik jari perubahan tiap daftar, dihitung dengan agregat tanpa mengambil baris). Daftar log, foto, personel, dan riwayat baru diunduh ulang **hanya kalau sidik jarinya berubah**, dan sidik jari baru dicatat setelah unduhan berhasil sehingga yang gagal dicoba lagi. Refresh penuh tiap 60 detik menjadi jaring pengaman, dan kalau `/sync-state` gagal dashboard kembali ke pengambilan penuh. Alasannya: pemuatan penuh tiap 2 detik membuat antrean koneksi browser penuh (foto gagal termuat) dan makin berat seiring data bertambah.
+
+## Keamanan Login dan Log Aktivitas
+
+- **Pembatasan login:** 5 percobaan per menit per kombinasi akun + IP, 20 per menit per IP (`RateLimiter` `login` di `AppServiceProvider`), supaya password tidak bisa ditebak berulang.
+- **Log aktivitas (`activity_logs`):** login berhasil/gagal, kelola personel dan akun, ubah status sensor/flash, dan perintah ke kotak kunci dicatat beserta pelaku dan alamat IP. Nama pelaku disalin saat kejadian (tanpa foreign key), jadi jejak tetap ada walau akunnya dihapus. Kegagalan menulis log tidak menggagalkan aksi aslinya (hanya dilaporkan ke log Laravel). Hanya Admin PAM yang bisa membacanya (menu **Log Aktivitas**).
+- **Rotasi API key perangkat:** `php artisan device:rotate-key <device_id>` mengganti kunci dan mencetak kunci baru untuk disalin ke `config.h`.
 
 ## Status Sensor: Nyala vs Mati
 

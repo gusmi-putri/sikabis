@@ -9,6 +9,8 @@ import React, { useState } from 'react';
 import { Radio, ChevronLeft, ChevronRight, ImageOff } from 'lucide-react';
 import { MotionEvent } from '../types';
 import { ImageZoomModal } from './ImageZoomModal';
+import { ReliableImage } from './ReliableImage';
+import { deviceLabel } from '../utils/deviceLabel';
 import { LiveCameraPanel } from './LiveCameraPanel';
 
 import { DeviceStatus } from '../types';
@@ -148,7 +150,7 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({
               <tr className="text-[11px] font-mono border-b border-white/10 text-slate-400 bg-black/20">
                 <th className="py-3 px-4">Waktu</th>
                 <th className="py-3 px-4">Foto Dokumentasi</th>
-                <th className="py-3 px-4">Device ID</th>
+                <th className="py-3 px-4">Perangkat</th>
                 <th className="py-3 px-4 text-center">Status Sensor</th>
               </tr>
             </thead>
@@ -178,7 +180,7 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({
                               isArmed ? 'border-amber-500/40' : 'border-slate-500/30'
                             }`}
                           >
-                            <img src={event.image_path} alt="Foto motion" className="w-full h-full object-cover" />
+                            <ReliableImage src={event.image_path} alt="Foto motion" className="w-full h-full object-cover" />
                           </button>
                         ) : (
                           <div className="w-16 h-10 rounded border flex items-center justify-center bg-white/5 border-white/10 text-slate-500">
@@ -189,7 +191,7 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({
 
                       {/* Device */}
                       <td className="py-3 px-4 font-mono text-xs text-slate-400">
-                        {event.device_id}
+                        {deviceLabel(event.device_id)}
                       </td>
 
                       {/* Status Sensor */}
@@ -250,7 +252,7 @@ export const MotionLogView: React.FC<MotionLogViewProps> = ({
         <ImageZoomModal
           imageUrl={zoomEvent.image_path}
           title={`Deteksi Gerakan (${zoomEvent.pir_mode === 'ON' ? 'Bahaya' : 'Aktivitas'})`}
-          subtitle={`${new Date(zoomEvent.created_at).toLocaleString('id-ID')} WIB · ${zoomEvent.device_id}`}
+          subtitle={`${new Date(zoomEvent.created_at).toLocaleString('id-ID')} WIB · ${deviceLabel(zoomEvent.device_id)}`}
           onClose={() => setZoomEvent(null)}
         />
       )}

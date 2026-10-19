@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\DeviceStatusResource;
 use App\Http\Resources\PirModeLogResource;
+use App\Models\ActivityLog;
 use App\Models\DeviceStatus;
 use App\Models\PirModeLog;
 use Illuminate\Http\Request;
@@ -49,6 +50,11 @@ class DeviceStatusController extends Controller
                 'source' => 'web',
                 'changed_by' => $request->user()->name,
             ]);
+
+            ActivityLog::record($request, 'sensor.set', $device->device_id, [
+                'status' => $data['mode'] === 'ON' ? 'Nyala' : 'Mati',
+                'durasi_menit' => $data['duration_minutes'] ?? null,
+            ]);
         }
 
         return response()->json(null, 204);
@@ -61,6 +67,8 @@ class DeviceStatusController extends Controller
         ]);
 
         DeviceStatus::where('device_id', 'GUDANG-01')->first()?->update(['flash_on' => $data['on']]);
+
+        ActivityLog::record($request, 'flash.set', 'GUDANG-01', ['on' => (bool) $data['on']]);
 
         return response()->json(null, 204);
     }
@@ -112,6 +120,10 @@ class DeviceStatusController extends Controller
                 'keybox_command_target' => $data['command'] === 'ENROLL' ? $data['target'] : null,
                 'keybox_enroll_message' => $data['command'] === 'ENROLL' ? 'Menunggu Board A menerima perintah...' : null,
                 'keybox_enroll_message_at' => $data['command'] === 'ENROLL' ? now() : null,
+            ]);
+
+            ActivityLog::record($request, 'keybox.command', $data['command'], [
+                'target' => $data['target'] ?? null,
             ]);
         }
 

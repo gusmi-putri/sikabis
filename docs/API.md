@@ -34,7 +34,7 @@ X-Device-Key: <api_key milik device>
 ## Auth
 
 ### `POST /login`
-Login user web. Tidak butuh auth.
+Login user web. Tidak butuh auth. Dibatasi 5 percobaan per menit untuk kombinasi akun + alamat IP, dan 20 per menit per alamat IP; kelebihannya dibalas `429` dengan pesan "Terlalu banyak percobaan login". Login berhasil dan gagal dicatat di log aktivitas (password tidak pernah dicatat).
 
 **Request:**
 ```json
@@ -64,6 +64,15 @@ Cabut token Sanctum yang sedang dipakai. Response `204`.
 ### `GET /access-logs` 🔐
 Riwayat scan fingerprint key box, terbaru duluan. Field `personnel_name` di-resolve dari relasi `fingerprint_id`, bisa `null` kalau fingerprint tidak dikenal (misal upaya akses gagal). Log dari kotak kunci dua board juga membawa `reason`, `confidence`, `failed_streak`, `alarm`, `event_number`, `missing_before`, dan `device_restarted` (lihat `POST /device/keybox/log`).
 
+### `GET /sync-state` 🔐
+Sidik jari perubahan tiap daftar data, murah dihitung (agregat `COUNT`/`MAX`, tanpa mengambil baris). Dashboard memanggilnya tiap 2 detik dan hanya mengunduh ulang daftar yang sidik jarinya berubah.
+
+```json
+{ "data": { "access_logs": "9f2c…", "access_photos": "41ab…", "motion_events": "c07d…", "personnel": "5e11…", "pir_mode_logs": "a3f9…", "users": null } }
+```
+
+`users` hanya berisi nilai untuk `admin_pam`, `null` untuk role lain. Sidik jari `access_logs` ikut berubah saat data personel berubah (nama personel tampil di log), dan `access_photos` ikut menghitung foto yang baru masuk daftar "tanpa log" setelah jendela pemasangan lewat.
+
 ### `GET /motion-events` 🔐
 Riwayat deteksi PIR + foto, terbaru duluan.
 
@@ -72,6 +81,9 @@ Daftar personel terdaftar akses key box.
 
 ### `GET /users` 🔐👑
 Daftar seluruh akun user (`admin_pam`, `piket`, `pimpinan`).
+
+### `GET /activity-logs` 🔐👑
+300 tindakan operator terakhir, terbaru duluan: login (berhasil/gagal), kelola personel dan akun, ubah status sensor/flash, dan perintah ke kotak kunci. Tiap entri memuat `user_name`, `action`, `label` (teks tampilan), `target`, `detail`, dan `ip_address`. Password tidak pernah dicatat; perubahan password hanya tercatat sebagai `password_diganti: true`.
 
 ---
 
@@ -216,6 +228,12 @@ Daftarkan kedua board dan dapatkan `api_key`-nya dengan:
 
 ```bash
 php artisan keybox:register            # default: kotak-kunci-01 + kotak-kunci-cam-01
+```
+
+Mengganti API key sebuah perangkat (kunci lama langsung tidak berlaku, perangkat offline sampai firmware di-upload ulang dengan kunci baru):
+
+```bash
+php artisan device:rotate-key kotak-kunci-01
 ```
 
 ### `POST /device/keybox/log` 📡

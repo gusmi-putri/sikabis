@@ -9,6 +9,8 @@ import { Radio, ImageOff } from 'lucide-react';
 import { MotionEvent } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
+import { ReliableImage } from './ReliableImage';
+import { deviceLabel } from '../utils/deviceLabel';
 
 interface MotionEventPanelProps {
   events: MotionEvent[];
@@ -47,7 +49,7 @@ export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) =>
           </div>
         </div>
         <span className={`text-[11px] font-mono px-2 py-1 rounded border ${isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
-          GUDANG-01
+          {deviceLabel('GUDANG-01')}
         </span>
       </div>
 
@@ -95,7 +97,7 @@ export const MotionEventPanel: React.FC<MotionEventPanelProps> = ({ events }) =>
                           className={`w-12 h-10 rounded border overflow-hidden cursor-pointer hover:opacity-90 transition-opacity ${isArmed ? 'border-amber-500/40' : 'border-slate-500/30'}`}
                           title="Klik untuk lihat penuh"
                         >
-                          <img
+                          <ReliableImage
                             src={event.image_path}
                             alt="Foto motion"
                             className="w-full h-full object-cover"

@@ -13,8 +13,18 @@ import {
   PersonnelInput,
   User,
   PIRMode,
-  PirModeLog
+  PirModeLog,
+  ActivityLogEntry
 } from '../types';
+
+export interface SyncState {
+  access_logs: string;
+  access_photos: string;
+  motion_events: string;
+  personnel: string;
+  pir_mode_logs: string;
+  users: string | null;
+}
 
 /**
  * Pesan yang layak ditampilkan dari error request: pesan validasi
@@ -84,6 +94,15 @@ export const APIService = {
   },
 
   // ── 2. LOGS & DATA FETCHING (DASHBOARD) ─────────────────────────
+
+  /**
+   * Sidik jari perubahan tiap daftar data (murah). Dipakai polling dashboard
+   * untuk memutuskan daftar mana yang perlu diunduh ulang.
+   */
+  getSyncState: async (): Promise<SyncState> => {
+    const response = await api.get('/sync-state');
+    return response.data.data;
+  },
 
   getAccessLogs: async (): Promise<AccessLog[]> => {
     const response = await api.get('/access-logs');
@@ -173,6 +192,11 @@ export const APIService = {
    */
   getPirModeLogs: async (): Promise<PirModeLog[]> => {
     const response = await api.get('/device/pir-mode-logs');
+    return response.data.data || response.data;
+  },
+
+  getActivityLogs: async (): Promise<ActivityLogEntry[]> => {
+    const response = await api.get('/activity-logs');
     return response.data.data || response.data;
   },
 

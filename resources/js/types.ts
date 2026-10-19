@@ -123,6 +123,20 @@ export interface PirModeLog {
   created_at: string;               // ISO 8601 string
 }
 
+// ---- Model: activity_logs ----
+// Jejak tindakan operator (login, kelola personel/akun, kontrol perangkat).
+// Hanya bisa dibaca Admin PAM.
+export interface ActivityLogEntry {
+  id: number;
+  user_name: string | null;         // null untuk login gagal (pelaku tidak dikenal)
+  action: string;                   // kode tindakan, misal 'user.create'
+  label: string;                    // teks tampilan dari server
+  target: string | null;
+  detail: Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string;               // ISO 8601 string
+}
+
 // ---- Statistik Dashboard (dihitung di frontend dari data log) ----
 export interface DashboardStats {
   accessSuccess24h: number;         // Akses berhasil 24 jam terakhir

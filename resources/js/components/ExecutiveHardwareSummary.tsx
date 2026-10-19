@@ -2,6 +2,7 @@ import React from 'react';
 import { Radio, KeyRound, Camera, Wifi, WifiOff, ShieldCheck } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceStatus } from '../types';
+import { deviceLabel } from '../utils/deviceLabel';
 
 interface ExecutiveHardwareSummaryProps {
   deviceStatus: DeviceStatus;
@@ -107,7 +108,7 @@ export const ExecutiveHardwareSummary: React.FC<ExecutiveHardwareSummaryProps> =
             <div className="flex items-center gap-2">
               <KeyRound className={`w-4 h-4 ${isBoardAOnline ? 'text-emerald-400' : 'text-slate-500'}`} />
               <span className={`text-xs font-bold font-mono ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                Board A (Sidik Jari)
+                {deviceLabel('kotak-kunci-01')}
               </span>
             </div>
             <span
@@ -140,7 +141,7 @@ export const ExecutiveHardwareSummary: React.FC<ExecutiveHardwareSummaryProps> =
             <div className="flex items-center gap-2">
               <Camera className={`w-4 h-4 ${isBoardBOnline ? 'text-sky-400' : 'text-slate-500'}`} />
               <span className={`text-xs font-bold font-mono ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
-                Board B (Kamera Kotak)
+                {deviceLabel('kotak-kunci-cam-01')}
               </span>
             </div>
             <span

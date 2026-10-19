@@ -9,6 +9,7 @@ import React from 'react';
 import { KeyRound, Camera, Wifi, WifiOff, BellOff, Lock, Volume2, Aperture, RotateCcw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceStatus } from '../types';
+import { deviceLabel } from '../utils/deviceLabel';
 
 export type KeyboxCommand = 'MUTE_ALARM' | 'FORCE_LOCK' | 'TEST_BUZZER' | 'TEST_TRIGGER' | 'RESET_SENSOR';
 
@@ -25,7 +26,7 @@ const KEYBOX_COMMANDS: { command: KeyboxCommand; label: string; title: string; i
   { command: 'MUTE_ALARM', label: 'Mute Alarm', title: 'Matikan alarm buzzer yang sedang berbunyi', icon: BellOff, hoverClass: 'hover:bg-amber-500/20 hover:border-amber-500 hover:text-amber-400' },
   { command: 'FORCE_LOCK', label: 'Paksa Kunci', title: 'Paksa kunci solenoid sekarang', icon: Lock, hoverClass: 'hover:bg-red-500/20 hover:border-red-500 hover:text-red-400' },
   { command: 'TEST_BUZZER', label: 'Uji Buzzer', title: 'Bunyikan buzzer 3 kali sebagai tes', icon: Volume2, hoverClass: 'hover:bg-blue-500/20 hover:border-blue-500 hover:text-blue-400' },
-  { command: 'TEST_TRIGGER', label: 'Uji Kamera', title: 'Kirim pulsa pemicu ke kamera (Board B) sebagai tes', icon: Aperture, hoverClass: 'hover:bg-purple-500/20 hover:border-purple-500 hover:text-purple-400' },
+  { command: 'TEST_TRIGGER', label: 'Uji Kamera', title: 'Kirim pulsa pemicu ke Kamera Kotak Kunci sebagai tes', icon: Aperture, hoverClass: 'hover:bg-purple-500/20 hover:border-purple-500 hover:text-purple-400' },
   { command: 'RESET_SENSOR', label: 'Reset Sensor', title: 'Deteksi ulang sensor sidik jari tanpa upload ulang firmware', icon: RotateCcw, hoverClass: 'hover:bg-emerald-500/20 hover:border-emerald-500 hover:text-emerald-400' },
 ];
 
@@ -80,10 +81,10 @@ export const DeviceStatusPanel: React.FC<DeviceStatusPanelProps> = ({
 
         <div className="flex items-center gap-2">
           {boardA && (
-            <StatusBadge label="Board A" icon={KeyRound} isOnline={boardA.status === 'online'} isDark={isDark} />
+            <StatusBadge label={deviceLabel('kotak-kunci-01')} icon={KeyRound} isOnline={boardA.status === 'online'} isDark={isDark} />
           )}
           {boardB && (
-            <StatusBadge label="Board B" icon={Camera} isOnline={boardB.status === 'online'} isDark={isDark} />
+            <StatusBadge label={deviceLabel('kotak-kunci-cam-01')} icon={Camera} isOnline={boardB.status === 'online'} isDark={isDark} />
           )}
         </div>
       </div>
@@ -119,7 +120,7 @@ export const DeviceStatusPanel: React.FC<DeviceStatusPanelProps> = ({
 
       {!isBoardAOnline && (
         <p className={`text-[11px] font-mono mt-3 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          Kontrol nonaktif — Board A offline
+          Kontrol nonaktif — {deviceLabel('kotak-kunci-01')} offline
         </p>
       )}
     </div>

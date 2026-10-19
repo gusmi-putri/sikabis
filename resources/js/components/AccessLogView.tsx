@@ -9,6 +9,9 @@ import { KeyRound, Search, ChevronLeft, ChevronRight, ImageOff, CameraOff, Trash
 import { AccessLog, AccessPhoto, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
+import { ReliableImage } from './ReliableImage';
+import { deviceLabel } from '../utils/deviceLabel';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { AccessLogMeta, MissingLogsRow, resolveDisplayName } from './AccessLogDetail';
 
 interface AccessLogViewProps {
@@ -48,6 +51,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [isDeletingPhotos, setIsDeletingPhotos] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  useEscapeKey(deleteTarget !== null && !isDeletingPhotos, () => setDeleteTarget(null));
 
   const confirmDelete = (label: string, action: () => Promise<void>) => {
     setDeleteError(null);
@@ -240,7 +244,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
                 <th className="py-3 px-4">Waktu</th>
                 <th className="py-3 px-4">Foto</th>
                 <th className="py-3 px-4">Personel</th>
-                <th className="py-3 px-4">Device ID</th>
+                <th className="py-3 px-4">Perangkat</th>
                 <th className="py-3 px-4 text-center">Status</th>
               </tr>
             </thead>
@@ -272,7 +276,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
                               isSuccess ? 'border-emerald-500/40' : 'border-red-500/40'
                             }`}
                           >
-                            <img src={log.image_path} alt="Foto scan" className="w-full h-full object-cover" />
+                            <ReliableImage src={log.image_path} alt="Foto scan" className="w-full h-full object-cover" />
                           </button>
                         ) : (
                           <div className="w-10 h-10 rounded border flex items-center justify-center bg-white/5 border-white/10 text-slate-500">
@@ -289,7 +293,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
 
                       {/* Device */}
                       <td className="py-3 px-4 font-mono text-xs text-slate-400">
-                        {log.device_id}
+                        {deviceLabel(log.device_id)}
                       </td>
 
                       {/* Status */}
@@ -382,7 +386,7 @@ export const AccessLogView: React.FC<AccessLogViewProps> = ({
                   })}
                   className="text-left cursor-pointer hover:opacity-90 transition-opacity"
                 >
-                  <img
+                  <ReliableImage
                     src={photo.image_path}
                     alt={`Pemicu #${photo.trigger_number}`}
                     className="w-24 h-18 rounded border object-cover border-amber-500/40"

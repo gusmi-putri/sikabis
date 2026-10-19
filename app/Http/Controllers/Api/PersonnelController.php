@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PersonnelResource;
+use App\Models\ActivityLog;
 use App\Models\Personnel;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,8 @@ class PersonnelController extends Controller
             'status' => 'active',
         ]);
 
+        ActivityLog::record($request, 'personnel.create', $personnel->name, ['fingerprint_id' => $personnel->fingerprint_id]);
+
         // Langsung kirim perintah ENROLL ke Board A
         $device = \App\Models\DeviceStatus::where('device_id', 'kotak-kunci-01')->first();
         if ($device) {
@@ -74,6 +77,8 @@ class PersonnelController extends Controller
 
         $personnel->update($data);
 
+        ActivityLog::record($request, 'personnel.update', $personnel->name, ['fingerprint_id' => $personnel->fingerprint_id]);
+
         return new PersonnelResource($personnel);
     }
 
@@ -82,11 +87,13 @@ class PersonnelController extends Controller
      * log lama tetap tercatat atas nama personel ini lewat personnel_id.
      * Template di sensor tetap harus dihapus di Board A.
      */
-    public function deactivate(Personnel $personnel)
+    public function deactivate(Request $request, Personnel $personnel)
     {
         $fingerprintId = $personnel->fingerprint_id;
-        
+
         $personnel->update(['status' => 'inactive', 'fingerprint_id' => null]);
+
+        ActivityLog::record($request, 'personnel.deactivate', $personnel->name, ['fingerprint_id' => $fingerprintId]);
 
         // Antrekan perintah DELETE ke Board A jika sebelumnya punya ID
         if ($fingerprintId) {

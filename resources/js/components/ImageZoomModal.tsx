@@ -1,6 +1,7 @@
 import React, { useState, useRef, MouseEvent as ReactMouseEvent } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 
 interface ImageZoomModalProps {
   imageUrl: string;
@@ -14,6 +15,7 @@ export const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ imageUrl, title,
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({x: 0, y: 0});
   const [isDragging, setIsDragging] = useState(false);
+  useEscapeKey(true, onClose);
   const dragStart = useRef({x: 0, y: 0});
 
   const handleZoomIn = () => setScale(prev => Math.min(prev + 0.5, 4));

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -30,14 +31,18 @@ class UserController extends Controller
             'is_active' => true,
         ]);
 
+        ActivityLog::record($request, 'user.create', $user->username, ['role' => $user->role]);
+
         return new UserResource($user);
     }
 
-    public function toggleActive(User $user)
+    public function toggleActive(Request $request, User $user)
     {
         $this->ensureNotAdminPam($user);
 
         $user->update(['is_active' => ! $user->is_active]);
+
+        ActivityLog::record($request, 'user.toggle_active', $user->username, ['is_active' => $user->is_active]);
 
         return new UserResource($user);
     }
@@ -66,14 +71,22 @@ class UserController extends Controller
 
         $user->update($data);
 
+        // Password sengaja tidak dicatat, hanya fakta bahwa diganti.
+        ActivityLog::record($request, 'user.update', $user->username, [
+            'role' => $user->role,
+            'password_diganti' => array_key_exists('password', $data),
+        ]);
+
         return new UserResource($user);
     }
 
-    public function destroy(User $user)
+    public function destroy(Request $request, User $user)
     {
         $this->ensureNotAdminPam($user);
 
         $user->delete();
+
+        ActivityLog::record($request, 'user.delete', $user->username, ['role' => $user->role]);
 
         return response()->json(null, 204);
     }

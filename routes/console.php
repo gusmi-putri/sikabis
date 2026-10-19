@@ -53,6 +53,27 @@ Artisan::command('keybox:register
     $this->info('Salin api_key ke SERVER_TOKEN di firmware masing-masing board.');
 })->purpose('Daftarkan pasangan board kotak kunci (sidik jari + kamera) dan tampilkan API key-nya');
 
+Artisan::command('device:rotate-key
+    {device : ID perangkat, mis. kotak-kunci-01, kotak-kunci-cam-01, atau GUDANG-01}
+    {--yes : Lewati konfirmasi}', function (string $device) {
+    $status = DeviceStatus::where('device_id', $device)->first();
+
+    if (! $status) {
+        $this->error("Perangkat {$device} tidak ditemukan.");
+
+        return 1;
+    }
+
+    if (! $this->option('yes') && ! $this->confirm("Kunci lama {$device} langsung tidak berlaku dan perangkat offline sampai firmware di-upload ulang dengan kunci baru. Lanjutkan?")) {
+        return 1;
+    }
+
+    $status->update(['api_key' => Str::random(40)]);
+
+    $this->table(['device_id', 'api_key baru'], [[$device, $status->api_key]]);
+    $this->info('Salin ke SERVER_TOKEN (GUDANG-01: DEVICE_API_KEY_VAL) di config.h perangkat itu, lalu upload ulang firmware.');
+})->purpose('Ganti API key sebuah perangkat (kunci lama langsung tidak berlaku) dan tampilkan kunci barunya');
+
 Artisan::command('keybox:dedupe-photos {--dry-run : Hanya tampilkan, jangan hapus}', function () {
     $duplicates = AccessPhoto::whereNull('access_log_id')->orderBy('id')->get()
         ->filter(fn (AccessPhoto $photo) => AccessPhoto::where('id', '<', $photo->id)

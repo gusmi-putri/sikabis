@@ -3,11 +3,11 @@
  * Menu navigasi kiri. Brand: SI-JAGA.
  * Menu akan disesuaikan dengan role:
  * - piket: Dashboard, Access Log, Motion Log
- * - admin_pam: + Manajemen Akses, + Manajemen User
+ * - admin_pam: + Manajemen Akses, + Manajemen User, + Log Aktivitas
  */
 
 import React from 'react';
-import { Activity, KeyRound, Radio, Users, Shield, UserCog } from 'lucide-react';
+import { Activity, KeyRound, Radio, Users, Shield, UserCog, ClipboardList } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import type { NavTab } from '../Pages/Dashboard';
 import { UserRole } from '../types';
@@ -24,6 +24,7 @@ const allMenuItems: { id: NavTab; label: string; icon: React.ElementType; adminO
   { id: 'motion-log',       label: 'Motion Log',       icon: Radio,    adminOnly: false, ringColor: 'border-purple-400/50 text-purple-400 bg-purple-500/10' },
   { id: 'manajemen-akses',  label: 'Manajemen Akses',  icon: Users,    adminOnly: true,  ringColor: 'border-yellow-400/50 text-yellow-400 bg-yellow-500/10' },
   { id: 'manajemen-user',   label: 'Manajemen User',   icon: UserCog,  adminOnly: true,  ringColor: 'border-red-400/50 text-red-400 bg-red-500/10' },
+  { id: 'log-aktivitas',    label: 'Log Aktivitas',    icon: ClipboardList, adminOnly: true, ringColor: 'border-sky-400/50 text-sky-400 bg-sky-500/10' },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole }) => {

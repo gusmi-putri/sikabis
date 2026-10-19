@@ -1,16 +1,18 @@
 <?php
 
 use App\Http\Controllers\Api\AccessLogController;
+use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceEventController;
 use App\Http\Controllers\Api\DeviceStatusController;
 use App\Http\Controllers\Api\KeyBoxController;
 use App\Http\Controllers\Api\MotionEventController;
 use App\Http\Controllers\Api\PersonnelController;
+use App\Http\Controllers\Api\SyncStateController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 // ── Perangkat IoT (ESP32), autentikasi via X-Device-Key, bukan Sanctum ──
 Route::middleware('device.key')->prefix('device')->group(function () {
@@ -28,6 +30,7 @@ Route::middleware('device.key')->prefix('device')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    Route::get('/sync-state', [SyncStateController::class, 'show']);
     Route::get('/access-logs', [AccessLogController::class, 'index']);
     Route::get('/access-photos/unpaired', [AccessLogController::class, 'unpairedPhotos']);
     Route::get('/motion-events', [MotionEventController::class, 'index']);
@@ -51,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::delete('/access-photos/unpaired', [AccessLogController::class, 'destroyUnpairedPhotos']);
         Route::delete('/access-photos/{photo}', [AccessLogController::class, 'destroyUnpairedPhoto']);
+
+        Route::get('/activity-logs', [ActivityLogController::class, 'index']);
 
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);

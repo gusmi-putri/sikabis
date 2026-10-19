@@ -9,6 +9,7 @@ import React, { useState, useRef } from 'react';
 import { Camera, Settings2, RefreshCw, WifiOff, Zap, ZapOff } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceOnlineStatus } from '../types';
+import { deviceLabel } from '../utils/deviceLabel';
 
 interface LiveCameraPanelProps {
   deviceId: string;
@@ -65,7 +66,7 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
             <span className={`relative inline-flex rounded-full h-3 w-3 ${status === 'online' ? 'bg-red-500' : 'bg-slate-500'}`} />
           </div>
           <h3 className={`text-sm font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-            LIVE FEED: {deviceId}
+            LIVE FEED: {deviceLabel(deviceId)}
           </h3>
         </div>
       </div>

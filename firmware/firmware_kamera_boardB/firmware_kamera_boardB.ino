@@ -687,8 +687,11 @@ void kirimHeartbeat() {
     payload += ",\"stream_url\":\"http://" + WiFi.localIP().toString() + "/stream\"";
   }
   payload += "}";
-  http.POST(payload);
+  int kode = http.POST(payload);
   http.end();
+  if (kode < 200 || kode >= 300) {
+    Serial.printf("  Heartbeat gagal (kode %d), dicoba lagi %lu ms lagi.\n", kode, JEDA_HEARTBEAT);
+  }
 }
 
 void layaniWiFi() {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,18 +22,24 @@ class AuthController extends Controller
         $user = User::where('username', $credentials['username'])->first();
 
         if (! $user || ! \Illuminate\Support\Facades\Hash::check($credentials['password'], $user->password)) {
+            ActivityLog::record($request, 'auth.login_failed', $credentials['username']);
+
             throw ValidationException::withMessages([
                 'username' => ['Username atau password salah.'],
             ]);
         }
 
         if (! $user->is_active) {
+            ActivityLog::record($request, 'auth.login_failed', $credentials['username'], ['alasan' => 'akun nonaktif']);
+
             throw ValidationException::withMessages([
                 'username' => ['Akun ini telah dinonaktifkan.'],
             ]);
         }
 
         $token = $user->createToken('sijaga-spa')->plainTextToken;
+
+        ActivityLog::record($request, 'auth.login', $user->username, actor: $user);
 
         return response()->json([
             'user' => new UserResource($user),

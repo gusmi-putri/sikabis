@@ -7,7 +7,8 @@
 import React, { useState } from 'react';
 import { UserCog, UserPlus, Power, AlertTriangle, ShieldCheck, Edit2, Trash2, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { User } from '../types';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { User, UserRole } from '../types';
 
 interface UserManagementViewProps {
   currentUser: User;
@@ -50,6 +51,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [deleteActionError, setDeleteActionError] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  useEscapeKey(userToEdit !== null && !isProcessingAction, () => setUserToEdit(null));
+  useEscapeKey(userToDelete !== null && !isProcessingAction, () => setUserToDelete(null));
 
   // Admin bisa melihat semua user (termasuk dirinya sendiri)
   const displayUsers = usersList;

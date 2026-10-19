@@ -13,6 +13,8 @@ import { CheckCircle2, XCircle, KeyRound, ImageOff } from 'lucide-react';
 import { AccessLog, Personnel } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { ImageZoomModal } from './ImageZoomModal';
+import { ReliableImage } from './ReliableImage';
+import { deviceLabel } from '../utils/deviceLabel';
 import { AccessLogMeta, MissingLogsRow, resolveDisplayName } from './AccessLogDetail';
 
 interface LiveAccessTableProps {
@@ -53,7 +55,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
           </div>
         </div>
         <span className={`text-[11px] font-mono px-2 py-1 rounded border ${isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
-          kotak-kunci-01
+          {deviceLabel('kotak-kunci-01')}
         </span>
       </div>
 
@@ -104,7 +106,7 @@ export const LiveAccessTable: React.FC<LiveAccessTableProps> = ({ logs, personne
                             }`}
                           title="Klik untuk lihat penuh"
                         >
-                          <img
+                          <ReliableImage
                             src={log.image_path}
                             alt="Foto scan"
                             className="w-full h-full object-cover"

@@ -7,7 +7,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import { APIService } from '../services/api';
+import { APIService, SyncState } from '../services/api';
+import { useAlertSound } from '../hooks/useAlertSound';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { ActivityLogView } from '../components/ActivityLogView';
+import { resolveDisplayName } from '../components/AccessLogDetail';
 
 // Layout
 import { Sidebar } from '../components/Sidebar';
@@ -43,12 +47,15 @@ import {
   PirModeLog,
   PersonnelInput,
 } from '../types';
-export type NavTab = 'dashboard' | 'access-log' | 'motion-log' | 'manajemen-akses' | 'manajemen-user';
+const FULL_REFRESH_MS = 60 * 1000;
+
+export type NavTab = 'dashboard' | 'access-log' | 'motion-log' | 'manajemen-akses' | 'manajemen-user' | 'log-aktivitas';
 
 const EMPTY_DEVICE_STATUS: DeviceStatus = {
   device_id: '—',
   status: 'offline',
   pir_mode: 'ON',
+  sensor_label: 'Nyala',
   auto_arm_at: null,
   flash_on: false,
   stream_url: null,
@@ -77,6 +84,18 @@ export default function Dashboard() {
   // ── Unsaved changes guard (form Registrasi Personel) ────────
   const [hasUnsavedForm, setHasUnsavedForm] = useState(false);
   const [pendingTab, setPendingTab] = useState<NavTab | null>(null);
+  useEscapeKey(pendingTab !== null, () => setPendingTab(null));
+
+  // Peringatan bawaan browser kalau tab ditutup/di-refresh saat form belum tersimpan.
+  useEffect(() => {
+    if (!hasUnsavedForm) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsavedForm]);
 
   const handleSetActiveTab = useCallback((tab: NavTab) => {
     if (hasUnsavedForm && tab !== activeTab) {
@@ -103,10 +122,16 @@ export default function Dashboard() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Sidik jari perubahan terakhir yang sudah dimuat, dan kapan refresh penuh
+  // terakhir -- dipakai polling hemat di bawah.
+  const syncRef = useRef<Partial<Record<keyof SyncState, string | null>>>({});
+  const lastFullRefreshRef = useRef(0);
+
   // ── Ambil data dari backend Laravel setelah login ──────────
   // silent=true dipakai untuk polling berkala di latar belakang, supaya
   // teks "Memuat data..." tidak berkedip tiap 15 detik.
   const refreshData = useCallback(async (user: User, silent = false) => {
+    lastFullRefreshRef.current = Date.now();
     if (!silent) setIsLoadingData(true);
     setLoadError(null);
     try {
@@ -143,14 +168,92 @@ export default function Dashboard() {
     }
   }, [currentUser, refreshData]);
 
-  // Poll berkala supaya perubahan dari luar tab ini (device fisik lewat
-  // Telegram, atau operator lain) ikut muncul tanpa perlu reload manual.
-  // Diubah ke 2 detik agar status (lampu, sensor PIR) lebih update secara real-time.
+  // Polling hemat: tiap 2 detik hanya status perangkat dan sidik jari
+  // perubahan (murah) yang diambil. Daftar log/foto/personel baru diunduh
+  // ulang kalau sidik jarinya berubah. Refresh penuh tiap 60 detik menjadi
+  // jaring pengaman kalau ada perubahan yang terlewat.
+  const pollData = useCallback(async (user: User) => {
+    if (Date.now() - lastFullRefreshRef.current > FULL_REFRESH_MS) {
+      await refreshData(user, true);
+      return;
+    }
+    try {
+      await Promise.all([
+        APIService.getDeviceStatus().then((status) => {
+          if (!deviceCmdPendingRef.current) setDeviceStatus(status);
+        }),
+        APIService.getKeyboxStatus().then(setKeyboxStatus),
+        APIService.getSyncState().then((sync) => {
+          const known = syncRef.current;
+          const tasks: Promise<void>[] = [];
+          const whenChanged = (key: keyof SyncState, load: () => Promise<void>) => {
+            if (known[key] === sync[key]) return;
+            // Sidik jari baru dicatat setelah unduhan berhasil, jadi yang gagal dicoba lagi.
+            tasks.push(load().then(() => { known[key] = sync[key]; }));
+          };
+          whenChanged('access_logs', () => APIService.getAccessLogs().then(setAccessLogs));
+          whenChanged('access_photos', () => APIService.getUnpairedAccessPhotos().then(setUnpairedPhotos));
+          whenChanged('motion_events', () => APIService.getMotionEvents().then(setMotionEvents));
+          whenChanged('personnel', () => APIService.getPersonnelList().then(setPersonnelList));
+          whenChanged('pir_mode_logs', () => APIService.getPirModeLogs().then(setPirModeLogs));
+          if (user.role === 'admin_pam' && sync.users !== null) {
+            whenChanged('users', () => APIService.getUsersList().then(setUsersList));
+          }
+          return Promise.all(tasks).then(() => undefined);
+        }),
+      ]);
+      setLastRefreshed(new Date());
+    } catch {
+      // Endpoint ringan gagal (misal server lama): kembali ke pengambilan penuh.
+      await refreshData(user, true);
+    }
+  }, [refreshData]);
+
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => refreshData(currentUser, true), 2000);
+    const interval = setInterval(() => pollData(currentUser), 2000);
     return () => clearInterval(interval);
-  }, [currentUser, refreshData]);
+  }, [currentUser, pollData]);
+
+  // ── Peringatan kejadian baru (toast + bunyi) ───────────────
+  // ID terbesar yang sudah dilihat; kejadian dengan ID lebih besar dianggap
+  // baru. Pemuatan pertama hanya mencatat, tidak memberi peringatan.
+  const seenEventsRef = useRef<{ access: number; motion: number } | null>(null);
+  const { enabled: soundEnabled, toggle: toggleSound, play: playSound } = useAlertSound();
+
+  useEffect(() => {
+    if (!lastRefreshed) return;
+    const maxAccess = accessLogs.reduce((max, log) => Math.max(max, log.id), 0);
+    const maxMotion = motionEvents.reduce((max, event) => Math.max(max, event.id), 0);
+    const seen = seenEventsRef.current;
+    seenEventsRef.current = { access: maxAccess, motion: maxMotion };
+    if (!seen) return;
+
+    // Dibatasi 3 per siklus supaya tidak membanjiri layar setelah koneksi pulih.
+    const newLogs = accessLogs.filter((log) => log.id > seen.access).slice(0, 3);
+    const newMotion = motionEvents.filter((event) => event.id > seen.motion).slice(0, 3);
+
+    for (const log of newLogs) {
+      const name = resolveDisplayName(log, personnelList);
+      if (log.alarm) {
+        toast(`ALARM: percobaan akses gagal berulang (${name}).`, 'error');
+        playSound('alarm');
+      } else if (log.result === 'failed') {
+        toast(`Percobaan akses gagal: ${name}.`, 'warning');
+        playSound('warning');
+      } else {
+        toast(`Akses berhasil: ${name}.`, 'info');
+      }
+    }
+    for (const event of newMotion) {
+      if (event.pir_mode === 'ON') {
+        toast('Gerakan terdeteksi di gudang.', 'warning');
+        playSound('warning');
+      } else {
+        toast('Gerakan terekam saat sensor mati.', 'info');
+      }
+    }
+  }, [accessLogs, motionEvents, lastRefreshed, personnelList, toast, playSound]);
 
   // ── Statistik (dihitung dari log 24 jam terakhir) ──────────
   const now = Date.now();
@@ -247,8 +350,14 @@ export default function Dashboard() {
   const handleKeyboxCommand = async (command: KeyboxCommand) => {
     try {
       await APIService.sendKeyboxCommand(command);
-      const label = command === 'mute_alarm' ? 'Alarm dimatikan.' : 'Perintah kunci terkirim.';
-      toast(label, 'success');
+      const labels: Record<KeyboxCommand, string> = {
+        MUTE_ALARM: 'Alarm dimatikan.',
+        FORCE_LOCK: 'Perintah paksa kunci terkirim.',
+        TEST_BUZZER: 'Perintah uji buzzer terkirim.',
+        TEST_TRIGGER: 'Perintah uji kamera terkirim.',
+        RESET_SENSOR: 'Perintah reset sensor terkirim.',
+      };
+      toast(labels[command], 'success');
     } catch {
       toast('Perintah gagal terkirim ke kotak kunci.', 'error');
     }
@@ -271,6 +380,9 @@ export default function Dashboard() {
     setPirModeLogs([]);
     setDeviceStatus(EMPTY_DEVICE_STATUS);
     setKeyboxStatus([]);
+    setLastRefreshed(null);
+    syncRef.current = {};
+    seenEventsRef.current = null;
   };
 
   // ── Aksi: Buang foto kotak kunci yang tidak punya log ──────
@@ -340,7 +452,10 @@ export default function Dashboard() {
   }
 
   // RBAC Check for rendering tabs
-  if (currentUser.role === 'piket' && (activeTab === 'manajemen-akses' || activeTab === 'manajemen-user')) {
+  if (
+    currentUser.role !== 'admin_pam' &&
+    (activeTab === 'manajemen-akses' || activeTab === 'manajemen-user' || activeTab === 'log-aktivitas')
+  ) {
     setActiveTab('dashboard');
   }
 
@@ -382,8 +497,9 @@ export default function Dashboard() {
         <Topbar
           operatorName={currentUser.name}
           operatorRole={currentUser.role}
-          deviceStatus={deviceStatus}
           lastRefreshed={lastRefreshed}
+          soundEnabled={soundEnabled}
+          onToggleSound={toggleSound}
           onLogout={handleLogout}
         />
 
@@ -429,7 +545,7 @@ export default function Dashboard() {
                     />
                     <DeviceStatusPanel
                       title="Status Kotak Kunci"
-                      description="Sidik jari (Board A) + kameranya (Board B)"
+                      description="Sidik jari dan kamera"
                       devices={keyboxStatus}
                       onKeyboxCommand={handleKeyboxCommand}
                     />
@@ -505,6 +621,9 @@ export default function Dashboard() {
               onDeleteUser={handleDeleteUser}
             />
           )}
+
+          {/* ── LOG AKTIVITAS (Khusus Admin) ───────────────── */}
+          {activeTab === 'log-aktivitas' && currentUser.role === 'admin_pam' && <ActivityLogView />}
         </main>
       </div>
       </div>

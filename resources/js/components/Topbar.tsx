@@ -1,32 +1,36 @@
 /**
  * SI-JAGA — Topbar.tsx
- * Header: brand, live clock, status device, nama operator, role, logout, theme toggle.
+ * Header: live clock, indikator refresh, nama operator, role, logout, theme toggle.
  */
 
 import React, { useState, useEffect } from 'react';
-import { Clock, Sun, Moon, LogOut, Wifi, WifiOff, User, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Clock, Sun, Moon, LogOut, User, AlertTriangle, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { DeviceStatus, UserRole } from '../types';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { UserRole } from '../types';
 
 interface TopbarProps {
   operatorName: string;
   operatorRole: UserRole;
-  deviceStatus: DeviceStatus;
   lastRefreshed: Date | null;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
   onLogout: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
   operatorName,
   operatorRole,
-  deviceStatus,
   lastRefreshed,
+  soundEnabled,
+  onToggleSound,
   onLogout,
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [sinceRefresh, setSinceRefresh] = useState<number>(0);
+  useEscapeKey(showLogoutModal, () => setShowLogoutModal(false));
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -51,14 +55,6 @@ export const Topbar: React.FC<TopbarProps> = ({
     month: 'short',
     year: 'numeric',
   });
-
-  const isOnline = deviceStatus.status === 'online';
-
-  // Hitung berapa lama perangkat offline (menit).
-  // Batasi 9999m agar tidak muncul angka absurd saat last_seen null/lama.
-  const offlineMinutes = isOnline || !deviceStatus.last_seen
-    ? 0
-    : Math.min(9999, Math.floor((Date.now() - new Date(deviceStatus.last_seen).getTime()) / 60000));
 
   const roleLabel =
     operatorRole === 'admin_pam' ? 'Admin PAM' :
@@ -113,26 +109,23 @@ export const Topbar: React.FC<TopbarProps> = ({
         {/* Kanan: Status device + Operator + Actions */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
 
-          {/* Status ESP32 / PIR Device — tampilkan waktu offline kalau mati */}
-          <div
-            id="status-device-esp32"
-            title={`Last seen: ${new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID')}`}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-mono font-semibold shadow-md ${
-              isOnline
-                  ? isDark ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-emerald-100 border-emerald-300 text-emerald-700'
-                  : isDark ? 'bg-red-500/20 border-red-500/50 text-red-300' : 'bg-red-100 border-red-300 text-red-700'
+          {/* Bunyi peringatan */}
+          <button
+            id="btn-toggle-sound"
+            onClick={onToggleSound}
+            title={soundEnabled ? 'Bunyi peringatan menyala (klik untuk mematikan)' : 'Bunyi peringatan mati (klik untuk menyalakan)'}
+            className={`p-1.5 rounded-md border transition-all cursor-pointer ${
+              soundEnabled
+                ? isDark
+                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/50 text-emerald-300'
+                  : 'bg-emerald-100 hover:bg-emerald-200 border-emerald-300 text-emerald-700'
+                : isDark
+                ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-400'
+                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-500'
             }`}
           >
-            {isOnline
-              ? <Wifi className="w-3.5 h-3.5" />
-              : <WifiOff className="w-3.5 h-3.5" />
-            }
-            <span>
-              Gudang: {isOnline ? 'Online' : (
-                offlineMinutes >= 1 && offlineMinutes < 9999 ? `Offline ${offlineMinutes}m` : 'Offline'
-              )}
-            </span>
-          </div>
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
 
           {/* Theme Toggle */}
           <button

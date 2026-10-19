@@ -12,6 +12,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Shield, ShieldOff, Radio, Timer, Wifi, WifiOff, Clock } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceStatus, PIRMode } from '../types';
+import { deviceLabel } from '../utils/deviceLabel';
 
 interface PIRControlPanelProps {
   deviceStatus: DeviceStatus;
@@ -130,7 +131,7 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
             : isDark ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-red-50 border-red-300 text-red-700'
           }`}>
           {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-          <span className="font-semibold">{deviceStatus.device_id}</span>
+          <span className="font-semibold">{deviceLabel(deviceStatus.device_id)}</span>
           <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>•</span>
           <span>{isOnline ? 'Online' : 'Offline'}</span>
           {isOnline && lastSeenStr && (
