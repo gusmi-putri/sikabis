@@ -948,6 +948,8 @@ void setup() {
   Serial.print(F("  Lama membuka      : ")); Serial.print(LAMA_BUKA);  Serial.println(F(" ms"));
   Serial.print(F("  Pengaman keras    : ")); Serial.print(BATAS_AMAN); Serial.println(F(" ms"));
   Serial.print(F("  Batas gagal       : ")); Serial.println(BATAS_GAGAL);
+  Serial.print(F("  Server log        : ")); Serial.println(SERVER_URL);
+  Serial.print(F("  Server perintah   : ")); Serial.println(SERVER_URL_PERINTAH);
   garis();
   Serial.println(F("  Sistem berjaga. Tempelkan jari pada sensor."));
   cetakBantuan();

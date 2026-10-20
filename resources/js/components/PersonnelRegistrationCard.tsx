@@ -32,6 +32,7 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState<string | null>(null);
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
 
   const isDirty = formData.name !== '' || formData.rank_nrp !== '' || formData.notes !== '';
 
@@ -47,8 +48,17 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
     }
   }, [boardA?.enroll_message]);
 
-  const enrollMessage = liveMessage || boardA?.enroll_message;
+  const latestMessage = liveMessage || boardA?.enroll_message || null;
+  const isFinalMessage = !!latestMessage && (latestMessage.startsWith('Berhasil') || latestMessage.startsWith('Gagal'));
+  // Hasil akhir (berhasil/gagal) cukup tampil sebentar, lalu hilang sendiri.
+  const enrollMessage = latestMessage !== dismissedMessage ? latestMessage : null;
   const isEnrolling = enrollMessage && !enrollMessage.startsWith('Berhasil') && !enrollMessage.startsWith('Gagal');
+
+  useEffect(() => {
+    if (!isFinalMessage || !latestMessage) return;
+    const timer = setTimeout(() => setDismissedMessage(latestMessage), 6000);
+    return () => clearTimeout(timer);
+  }, [isFinalMessage, latestMessage]);
 
   useEffect(() => {
     if (!isEnrolling) return;
@@ -78,6 +88,7 @@ export const PersonnelRegistrationCard: React.FC<PersonnelRegistrationCardProps>
         rank_nrp: formData.rank_nrp || undefined,
         notes: formData.notes || undefined,
       });
+      setDismissedMessage(null);
       setLiveMessage('Menunggu pendaftaran sidik jari di alat...');
       setFormData(EMPTY_FORM);
       onDirtyChange?.(false);

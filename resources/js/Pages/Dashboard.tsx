@@ -398,11 +398,11 @@ export default function Dashboard() {
     toast('Personel berhasil didaftarkan.', 'success');
   };
 
-  // ── Aksi: Cabut akses personel ──────────────────────────────
-  const handleDeactivatePersonnel = async (id: number) => {
-    await APIService.deactivatePersonnel(id);
+  // ── Aksi: Hapus / Cabut akses personel ──────────────────────
+  const handleDeletePersonnel = async (id: number) => {
+    await APIService.deletePersonnel(id);
     if (currentUser) await refreshData(currentUser);
-    toast('Akses personel berhasil dicabut.', 'success');
+    toast('Hak akses personel berhasil dihapus.', 'success');
   };
 
   // ── Aksi: Update data personel ───────────────────────────────
@@ -597,7 +597,7 @@ export default function Dashboard() {
               personnelList={personnelList}
               keyboxStatus={keyboxStatus}
               onCreate={handleCreatePersonnel}
-              onDeactivate={handleDeactivatePersonnel}
+              onDelete={handleDeletePersonnel}
               onUpdate={handleUpdatePersonnel}
               onDirtyChange={setHasUnsavedForm}
             />

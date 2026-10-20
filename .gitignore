@@ -25,6 +25,11 @@
 # Kredensial firmware ESP32 (WiFi, token Telegram, device API key) --
 # JANGAN pernah di-commit. Salin dari config.h.example.
 firmware/*/config.h
+
+# Sketch "ricad": satu file mandiri yang WiFi, password, dan token-nya ditulis
+# langsung di kode (tanpa config.h). JANGAN pernah di-commit.
+firmware/*_ricad/
+firmware/**/*ricad*.ino
 _ide_helper.php
 Homestead.json
 Homestead.yaml

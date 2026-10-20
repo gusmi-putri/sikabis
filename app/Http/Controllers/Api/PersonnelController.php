@@ -19,7 +19,7 @@ class PersonnelController extends Controller
 {
     public function index()
     {
-        return PersonnelResource::collection(Personnel::latest()->get());
+        return PersonnelResource::collection(Personnel::where('status', 'active')->latest()->get());
     }
 
     public function store(Request $request)
@@ -83,9 +83,8 @@ class PersonnelController extends Controller
     }
 
     /**
-     * Cabut akses. ID sidik jari dilepas supaya bisa dipakai personel lain;
-     * log lama tetap tercatat atas nama personel ini lewat personnel_id.
-     * Template di sensor tetap harus dihapus di Board A.
+     * Cabut hak akses personel. ID sidik jari dilepas dari sensor Board A,
+     * status menjadi inactive sehingga namanya langsung hilang dari dashboard.
      */
     public function deactivate(Request $request, Personnel $personnel)
     {
@@ -93,7 +92,7 @@ class PersonnelController extends Controller
 
         $personnel->update(['status' => 'inactive', 'fingerprint_id' => null]);
 
-        ActivityLog::record($request, 'personnel.deactivate', $personnel->name, ['fingerprint_id' => $fingerprintId]);
+        ActivityLog::record($request, 'personnel.delete', $personnel->name, ['fingerprint_id' => $fingerprintId]);
 
         // Antrekan perintah DELETE ke Board A jika sebelumnya punya ID
         if ($fingerprintId) {
@@ -107,7 +106,34 @@ class PersonnelController extends Controller
             }
         }
 
-        return new PersonnelResource($personnel);
+        return response()->json(['message' => 'Hak akses personel berhasil dicabut dan dihapus dari dashboard.']);
+    }
+
+    /**
+     * Hapus permanen personel dari sistem.
+     * Jika masih ada ID sidik jari, antrekan perintah DELETE ke Board A.
+     */
+    public function destroy(Request $request, Personnel $personnel)
+    {
+        $fingerprintId = $personnel->fingerprint_id;
+        $name = $personnel->name;
+
+        if ($fingerprintId) {
+            $device = \App\Models\DeviceStatus::where('device_id', 'kotak-kunci-01')->first();
+            if ($device) {
+                $device->update([
+                    'keybox_command' => 'DELETE',
+                    'keybox_command_at' => now(),
+                    'keybox_command_target' => $fingerprintId,
+                ]);
+            }
+        }
+
+        $personnel->delete();
+
+        ActivityLog::record($request, 'personnel.delete', $name, ['fingerprint_id' => $fingerprintId]);
+
+        return response()->json(['message' => 'Hak akses personel berhasil dihapus.']);
     }
 
     /**

@@ -18,7 +18,7 @@ class ActivityLog extends Model
         'auth.login_failed' => 'Login gagal',
         'personnel.create' => 'Mencatat personel',
         'personnel.update' => 'Mengubah data personel',
-        'personnel.deactivate' => 'Mencabut akses personel',
+        'personnel.delete' => 'Menghapus hak akses personel',
         'user.create' => 'Membuat akun',
         'user.update' => 'Mengubah akun',
         'user.toggle_active' => 'Mengubah status aktif akun',

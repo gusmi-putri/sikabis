@@ -50,6 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:admin_pam')->group(function () {
         Route::post('/personnel', [PersonnelController::class, 'store']);
         Route::put('/personnel/{personnel}', [PersonnelController::class, 'update']);
+        Route::delete('/personnel/{personnel}', [PersonnelController::class, 'destroy']);
         Route::post('/personnel/{personnel}/deactivate', [PersonnelController::class, 'deactivate']);
 
         Route::delete('/access-photos/unpaired', [AccessLogController::class, 'destroyUnpairedPhotos']);

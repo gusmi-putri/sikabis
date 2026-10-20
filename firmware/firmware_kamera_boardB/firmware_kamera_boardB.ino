@@ -835,6 +835,8 @@ void setup() {
   Serial.print(F("-"));
   Serial.print(LEBAR_MAX_PULSA);
   Serial.println(F(" ms)"));
+  Serial.print(F("  Server foto   : ")); Serial.println(SERVER_URL_FOTO);
+  Serial.print(F("  Server status : ")); Serial.println(SERVER_URL_HEARTBEAT);
 
   kameraSiap = mulaiKamera();
   if (kameraSiap) {

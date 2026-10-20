@@ -9,8 +9,9 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, ShieldOff, Radio, Timer, Wifi, WifiOff, Clock } from 'lucide-react';
+import { Shield, ShieldOff, Radio, Timer } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { StatusBadge } from './StatusBadge';
 import { DeviceStatus, PIRMode } from '../types';
 import { deviceLabel } from '../utils/deviceLabel';
 
@@ -62,14 +63,6 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
   const isOnline = deviceStatus.status === 'online';
   const isArmed = (overrideMode ?? deviceStatus.pir_mode) === 'ON';
 
-  const lastSeenStr = deviceStatus.last_seen
-    ? new Date(deviceStatus.last_seen).toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : null;
-
   // Countdown timer effect
   useEffect(() => {
     if (!deviceStatus.auto_arm_at) {
@@ -108,39 +101,17 @@ export const PIRControlPanel: React.FC<PIRControlPanelProps> = ({
     >
       {/* Header */}
       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg border ${isArmed
-              ? isDark ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-amber-50 border-amber-300 text-amber-700'
-              : isDark ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-red-50 border-red-300 text-red-700'
-            }`}>
-            <Radio className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              Kontrol Sensor PIR Gudang
-            </h3>
-            <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Ubah status sensor gerakan secara manual
-            </p>
-          </div>
+        <div>
+          <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Kontrol Sensor PIR Gudang
+          </h3>
+          <p className={`text-[11px] font-mono mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            Ubah status sensor gerakan secara manual
+          </p>
         </div>
 
-        {/* Status Device */}
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono ${isOnline
-            ? isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'
-            : isDark ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-red-50 border-red-300 text-red-700'
-          }`}>
-          {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-          <span className="font-semibold">{deviceLabel(deviceStatus.device_id)}</span>
-          <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>•</span>
-          <span>{isOnline ? 'Online' : 'Offline'}</span>
-          {isOnline && lastSeenStr && (
-            <>
-              <span className={isDark ? 'text-slate-600' : 'text-slate-400'}>•</span>
-              <Clock className="w-3 h-3" />
-              <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>{lastSeenStr}</span>
-            </>
-          )}
+        <div className="flex items-center gap-2">
+          <StatusBadge label={deviceLabel(deviceStatus.device_id)} icon={Radio} isOnline={isOnline} isDark={isDark} />
         </div>
       </div>
 

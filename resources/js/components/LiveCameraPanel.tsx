@@ -5,7 +5,7 @@
  * tetap akurat walau IP berubah karena DHCP.
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Camera, Settings2, RefreshCw, WifiOff, Zap, ZapOff, Loader2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { DeviceOnlineStatus } from '../types';
@@ -14,6 +14,13 @@ import { deviceLabel } from '../utils/deviceLabel';
 // Kamera ESP32 hanya melayani satu penonton sekali waktu; kalau masih
 // menyelesaikan koneksi lama, permintaan baru menunggu tanpa error.
 const STALL_AFTER_MS = 8000;
+
+// Chrome TIDAK menutup koneksi MJPEG hanya karena <img>-nya dilepas dari
+// halaman: unduhan jalan terus di latar belakang dan tetap memegang satu-
+// satunya "slot penonton" kamera. Nyalakan ulang stream lalu menunggu tanpa
+// akhir sampai halaman di-refresh. Mengganti src ke gambar kosong membatalkan
+// unduhan itu dan melepas koneksinya.
+const BLANK_IMAGE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 
 interface LiveCameraPanelProps {
   deviceId: string;
@@ -43,7 +50,17 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
   const [isEditingUrl, setIsEditingUrl] = useState(false);
   const [isTogglingFlash, setIsTogglingFlash] = useState(false);
 
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  // Ref callback dengan fungsi pembersih (React 19): dijalankan setiap kali
+  // elemen <img> stream dilepas -- Matikan Stream, Coba lagi/Refresh (key
+  // berganti), pindah tab, atau komponen dibongkar.
+  const attachStreamImage = useCallback((node: HTMLImageElement | null) => {
+    if (!node) return;
+    return () => {
+      node.src = BLANK_IMAGE;
+    };
+  }, []);
+
+  const isBlank = (img: HTMLImageElement) => img.src === BLANK_IMAGE;
 
   const isOnline = status === 'online';
 
@@ -100,13 +117,17 @@ export const LiveCameraPanel: React.FC<LiveCameraPanelProps> = ({
               displayUrl && !imageFailed ? (
                 <>
                   <img
-                    ref={imgRef}
+                    ref={attachStreamImage}
                     key={displayUrl}
                     src={displayUrl}
                     alt="Live Stream"
                     className="w-full h-full object-contain"
-                    onError={() => setImageFailed(true)}
-                    onLoad={() => {
+                    onError={(e) => {
+                      if (isBlank(e.currentTarget)) return;
+                      setImageFailed(true);
+                    }}
+                    onLoad={(e) => {
+                      if (isBlank(e.currentTarget)) return;
                       setImageFailed(false);
                       setFrameLoaded(true);
                       setStalled(false);

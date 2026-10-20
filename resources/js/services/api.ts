@@ -211,10 +211,17 @@ export const APIService = {
   },
 
   /**
-   * Mencabut akses personel dan melepas ID sidik jarinya.
+   * Mencabut dan menghapus hak akses personel dari sistem.
+   */
+  deletePersonnel: async (id: number): Promise<void> => {
+    await api.delete(`/personnel/${id}`);
+  },
+
+  /**
+   * Alias untuk deletePersonnel (kompatibilitas).
    */
   deactivatePersonnel: async (id: number): Promise<void> => {
-    await api.post(`/personnel/${id}/deactivate`);
+    await api.delete(`/personnel/${id}`);
   },
 
   /**

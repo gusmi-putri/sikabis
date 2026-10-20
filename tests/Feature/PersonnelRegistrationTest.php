@@ -103,4 +103,27 @@ class PersonnelRegistrationTest extends TestCase
             AccessLog::with('personnel')->orderBy('id')->get()->pluck('personnel.name')->all(),
         );
     }
+
+    public function test_admin_can_permanently_delete_personnel(): void
+    {
+        $personnel = Personnel::create(['name' => 'Akan Dihapus', 'fingerprint_id' => null, 'status' => 'inactive']);
+
+        $this->actingAs($this->admin)->deleteJson("/api/personnel/{$personnel->id}")
+            ->assertOk()
+            ->assertJsonPath('message', 'Hak akses personel berhasil dihapus.');
+
+        $this->assertDatabaseMissing('personnel', ['id' => $personnel->id]);
+    }
+
+    public function test_deactivated_personnel_does_not_appear_in_personnel_list(): void
+    {
+        Personnel::create(['name' => 'Aktif', 'fingerprint_id' => 1, 'status' => 'active']);
+        Personnel::create(['name' => 'Dicabut', 'fingerprint_id' => null, 'status' => 'inactive']);
+
+        $response = $this->actingAs($this->admin)->getJson('/api/personnel');
+        $response->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Aktif');
+    }
 }
+
