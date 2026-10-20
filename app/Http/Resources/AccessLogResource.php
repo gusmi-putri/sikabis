@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,7 +21,7 @@ class AccessLogResource extends JsonResource
             'confidence' => $this->confidence,
             'failed_streak' => $this->failed_streak,
             'alarm' => (bool) $this->alarm,
-            'image_path' => $this->image_path,
+            'image_path' => MediaUrl::signed($this->image_path),
             'device_id' => $this->device_id,
             'event_number' => $this->event_number,
             'missing_before' => (int) $this->missing_before,

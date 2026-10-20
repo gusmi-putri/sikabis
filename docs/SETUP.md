@@ -61,13 +61,14 @@ Seeder (`database/seeders/SiJagaSeeder.php`) akan membuat:
 mysql -u root sikabis -e "SELECT device_id, api_key FROM device_statuses;"
 ```
 
-## 4. Storage Link
+## 4. Foto Bukti (JANGAN jalankan `storage:link`)
 
-Wajib supaya foto motion event bisa diakses lewat browser:
-
-```bash
-php artisan storage:link
-```
+Foto disimpan di `storage/app/public/` dan **sengaja tidak** dibuka lewat
+`public/storage`. Dashboard menerima URL bertanda tangan (`/api/media/...`)
+yang hanya didapat setelah login dan kedaluwarsa dalam 6-12 jam. Jangan
+jalankan `php artisan storage:link`; kalau symlink `public/storage` ada,
+hapus (`rmdir public\storage` di Windows), karena itu membuka semua foto
+tanpa login.
 
 ## 5. Build Frontend & Jalankan Server
 
@@ -120,7 +121,7 @@ Untuk pemakaian jangka panjang, sebaiknya set **IP address reservation/static** 
 
 | Gejala | Kemungkinan Penyebab |
 |---|---|
-| Foto motion event 404 di browser | Symlink `public/storage` rusak/bukan symlink asli. Jalankan ulang `php artisan storage:link`. |
+| Foto tidak tampil di dashboard | URL foto kedaluwarsa (6-12 jam): muat ulang halaman. Pastikan `public/storage` tidak ada dan file ada di `storage/app/public/`. |
 | ESP32 tidak bisa hubungi server | Server tidak dijalankan dengan `--host=0.0.0.0`, atau `API_BASE_URL` di `config.h` masih pakai `localhost`/IP lama. |
 | Perubahan status (PIR/flash) dari web tidak sampai ke device | Tunggu maks. 10 detik (interval polling firmware), atau cek `serverTerhubung` lewat command `/status` di Telegram. |
 | Halaman blank / asset 404 setelah `git pull` | Jalankan `npm run build` ulang — build lama di `public/build` tidak otomatis update. |

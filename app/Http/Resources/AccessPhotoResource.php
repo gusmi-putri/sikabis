@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\MediaUrl;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,7 +17,7 @@ class AccessPhotoResource extends JsonResource
             'id' => $this->id,
             'device_id' => $this->device_id,
             'trigger_number' => $this->trigger_number,
-            'image_path' => $this->image_path,
+            'image_path' => MediaUrl::signed($this->image_path),
             'access_log_id' => $this->access_log_id,
             'created_at' => $this->created_at?->toIso8601String(),
         ];

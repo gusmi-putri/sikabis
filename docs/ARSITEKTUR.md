@@ -109,9 +109,9 @@ UI web dan seluruh teks yang dibaca operator menampilkan ini sebagai "Nyala"/"Ma
 
 ## Penyimpanan Foto
 
-Foto motion event diupload ESP32 sebagai multipart form-data ke `POST /api/device/motion-event`, disimpan Laravel ke `storage/app/public/motion-events/`, lalu diakses publik lewat symlink `public/storage` → `storage/app/public` (dibuat dengan `php artisan storage:link`).
+Foto motion event diupload ESP32 sebagai multipart form-data ke `POST /api/device/motion-event`, disimpan Laravel ke `storage/app/public/motion-events/`, lalu hanya dilayani lewat `GET /api/media/{folder}/{nama}` dengan URL bertanda tangan (dibuat `App\Support\MediaUrl`, berlaku 6-12 jam, diperoleh setelah login). Symlink `public/storage` sengaja tidak dipakai.
 
-> **Catatan operasional:** kalau folder proyek pernah dipindah/di-restructure secara manual (bukan lewat Artisan), symlink ini bisa jadi folder kosong biasa dan foto akan 404 di browser meski file aslinya tersimpan dengan benar. Jalankan ulang `php artisan storage:link` setelah restrukturisasi apa pun.
+> **Catatan operasional:** jangan jalankan `php artisan storage:link`. Kalau `public/storage` ada, foto bisa dibuka siapa pun yang tahu URL-nya tanpa login.
 
 ## Kotak Kunci Sidik Jari
 

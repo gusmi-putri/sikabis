@@ -6,13 +6,21 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceEventController;
 use App\Http\Controllers\Api\DeviceStatusController;
 use App\Http\Controllers\Api\KeyBoxController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\MotionEventController;
 use App\Http\Controllers\Api\PersonnelController;
 use App\Http\Controllers\Api\SyncStateController;
 use App\Http\Controllers\Api\UserController;
+use Illuminate\Routing\Middleware\ValidateSignature;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+
+// Foto bukti: hanya lewat URL bertanda tangan (didapat setelah login).
+// Parameter `r` dipakai ReliableImage untuk mencoba ulang tanpa cache.
+Route::get('/media/{folder}/{name}', [MediaController::class, 'show'])
+    ->middleware(ValidateSignature::relative(['r']))
+    ->name('media.show');
 
 // ── Perangkat IoT (ESP32), autentikasi via X-Device-Key, bukan Sanctum ──
 Route::middleware('device.key')->prefix('device')->group(function () {

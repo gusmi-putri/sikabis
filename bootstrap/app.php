@@ -17,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Di balik tunnel (ngrok/Cloudflare) alamat dan skema asli datang lewat
+        // header X-Forwarded-*; tanpa ini URL aset dibuat http://sikabis.test
+        // dan diblokir browser sebagai mixed content. Hanya proxy lokal yang
+        // dipercaya (tunnel menyambung dari 127.0.0.1), bukan sembarang klien.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
         $middleware->web(append: [
             HandleInertiaRequests::class,
         ]);
