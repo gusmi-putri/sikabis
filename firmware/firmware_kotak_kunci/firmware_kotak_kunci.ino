@@ -535,6 +535,7 @@ void laporEnroll(const String &pesan) {
   Serial.println("  [web] " + pesan);
   if (!KIRIM_KE_SERVER || WiFi.status() != WL_CONNECTED) return;
 
+  unsigned long mulaiLapor = millis();
   HTTPClient http;
   http.setTimeout(1500);
   http.begin(SERVER_URL_ENROLL_STATUS);
@@ -551,6 +552,7 @@ void laporEnroll(const String &pesan) {
     Serial.println(http.getString());
   }
   http.end();
+  Serial.printf("  [web] lapor selesai dalam %lu ms (kode %d)\n", millis() - mulaiLapor, kode);
 }
 
 void layaniWiFi() {
@@ -687,12 +689,31 @@ void daftarSidikJari() {
    sedang menyala tetap bisa mati sendiri pada batas waktunya. */
 bool tungguSensor(uint8_t target, unsigned long batasMs) {
   unsigned long mulai = millis();
-  while (sensor.getImage() != target) {
+  uint8_t kodeTerakhir = 0xFF;
+  uint8_t bukanOk = 0;
+  while (true) {
+    uint8_t kode = sensor.getImage();
+    if (kode == target) return true;
+
+    /* Menunggu jari DIANGKAT: sebagian modul tidak membalas NOFINGER
+       (0x02) saat jari lepas, melainkan kode galat lain, sehingga
+       pendaftaran macet di "Angkat jari..." sampai 20 detik habis.
+       Beberapa balasan berturut-turut yang bukan OK sudah cukup
+       dianggap jari terangkat. Kodenya dicetak sekali supaya terlihat
+       di Serial Monitor sensor mana yang dipakai. */
+    if (target == FINGERPRINT_NOFINGER) {
+      bukanOk = (kode == FINGERPRINT_OK) ? 0 : bukanOk + 1;
+      if (bukanOk >= 5) return true;
+    }
+    if (kode != kodeTerakhir && kode != FINGERPRINT_OK && kode != FINGERPRINT_NOFINGER) {
+      Serial.printf("  Sensor membalas kode 0x%02X saat menunggu.\n", kode);
+    }
+    kodeTerakhir = kode;
+
     if (millis() - mulai > batasMs) return false;
     layaniBuzzer();
     delay(50);
   }
-  return true;
 }
 
 void daftarSidikJariID(int id) {
